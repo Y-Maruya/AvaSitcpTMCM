@@ -1,0 +1,210 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AvaSitcpTMCM.ViewModels"
+        x:Class="AvaSitcpTMCM.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="AvaSitcpTMCM"
+        Background="White">
+
+	<Design.DataContext>
+		<vm:MainWindowViewModel/>
+	</Design.DataContext>
+
+	<Window.Styles>
+		<Style Selector="HeaderedContentControl">
+			<Setter Property="Template">
+				<ControlTemplate>
+					<Grid>
+						<Border BorderBrush="LightGray"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Margin="0,25,0,0">
+							<ContentPresenter Content="{TemplateBinding Content}"
+                                              Margin="3,2,2,3"/>
+						</Border>
+
+						<TextBlock Text="{TemplateBinding Header}"
+								   FontWeight="Bold" FontSize="15" Background="{DynamicResource ApplicationBackgroundColor}"
+								   Foreground="{DynamicResource TextControlForeground}"
+								   Margin="0,0,0,0"
+								   Padding="5,0"
+								   VerticalAlignment="Top"
+								   HorizontalAlignment="Center"/>
+					</Grid>
+				</ControlTemplate>
+			</Setter>
+		</Style>
+		<Style Selector="Button:disabled">
+			<Setter Property="Background" Value="LightGray"/>
+		</Style>
+	</Window.Styles>
+
+	<Grid ColumnDefinitions="*, Auto, Auto" Margin="10">
+		<Border Grid.Column="0" BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
+			<HeaderedContentControl Header="Log Output">
+				<Grid>
+					<TextBlock TextWrapping="WrapWithOverflow" Text="{Binding LogText}" Margin="5" Width="150"/>
+				</Grid>
+			</HeaderedContentControl>
+		</Border>
+
+		<StackPanel Grid.Column="1" Spacing="10" Margin="10,0,0,0" Width="400">
+
+			<Border BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
+				<HeaderedContentControl Header="AHCAL TCP Connect">
+					<Grid RowDefinitions="Auto, Auto" ColumnDefinitions="*, 2*, *" Margin="5">
+						<TextBlock Grid.Row="0" Grid.Column="0"
+								   Text="IP Address"
+								   FontWeight="SemiBold"
+								   Foreground="Gray"
+								   HorizontalAlignment="Right"
+								   VerticalAlignment="Center"
+								   Margin="0,0,10,0" />
+						<TextBox Grid.Row="0" Grid.Column="1" Text="{Binding IpAddress}"/>
+
+						<TextBlock Grid.Row="1" Grid.Column="0"
+								   Text="Port"
+								   FontWeight="SemiBold"
+								   Foreground="Gray"
+								   HorizontalAlignment="Right"
+								   VerticalAlignment="Center"
+								   Margin="0,5,10,0" />
+						<TextBox Grid.Row="1" Grid.Column="1" Margin="0,5,0,0" Text="{Binding Port}"/>
+
+						<Button Grid.Row="0" Grid.Column="2" Grid.RowSpan="2" VerticalAlignment="Stretch" Content="Connect" Command="{Binding UserConnectCommand}" Margin="10,0,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+					</Grid>
+				</HeaderedContentControl>
+			</Border>
+
+			<Border BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
+				<HeaderedContentControl Header="TCP Write">
+					<Grid ColumnDefinitions="*, 2*, *" Margin="5">
+						<TextBlock Grid.Column="0"
+								   Text="Command"
+								   FontWeight="SemiBold"
+								   Foreground="Gray"
+								   HorizontalAlignment="Right"
+								   VerticalAlignment="Center"
+								   Margin="0,0,10,0" />
+						<TextBox Grid.Column="1" Text="{Binding TcpWriteText}" Margin="0,0,5,0"/>
+						<Button Grid.Column="2" Content="Send" Command="{Binding TCPWriteToUserCommand}" Margin="5,0,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+					</Grid>
+				</HeaderedContentControl>
+			</Border>
+
+			<Border BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
+				<HeaderedContentControl Header="TCP Read">
+					<Grid ColumnDefinitions="*, 2*, *" Margin="5">
+						<TextBlock Grid.Column="0"
+								   Text="Data Back"
+								   FontWeight="SemiBold"
+								   Foreground="Gray"
+								   HorizontalAlignment="Right"
+								   VerticalAlignment="Center"
+								   Margin="0,0,10,0" />
+						<TextBox Grid.Column="1" Text="{Binding TcpReadText}" Margin="0,0,5,0"/>
+						<Button Grid.Column="2" Content="Read" Command="{Binding TCPReadFromUserCommand}" Margin="5,0,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+					</Grid>
+				</HeaderedContentControl>
+			</Border>
+
+			<Border BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
+				<HeaderedContentControl Header="TCP Read To File">
+					<StackPanel Grid.Column="1" Spacing="10" Margin="5,0,0,0" Width="380">
+						<Grid ColumnDefinitions="*, 2*, *" Margin="5,5,5,0">
+							<TextBlock Grid.Column="0"
+									   Text="Folder Path"
+									   FontWeight="SemiBold"
+									   Foreground="Gray"
+									   HorizontalAlignment="Right"
+									   VerticalAlignment="Center"
+									   Margin="0,0,10,0" />
+							<TextBox Grid.Column="1" Text="{Binding FolderPathAtTcpReadToFile}" Margin="0,0,5,0"/>
+							<Button Grid.Column="2" Margin="5,0,5,0" Content="Select" Command="{Binding SelectFolderCommand}" CommandParameter="{Binding $parent[Window]}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+						</Grid>
+
+						<Border Height="1" Background="LightGray" Margin="0" />
+						<Grid ColumnDefinitions="*, *" Margin="5,-5,5,0">
+							<Button Grid.Column="0" Margin="5" Content="Start" Background="GreenYellow" Command="{Binding StartTCPReadFromUserToFileCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+							<Button Grid.Column="1" Margin="5" Content="Stop" Background="GreenYellow" Command="{Binding StopTCPReadFromUserToFileCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+						</Grid>
+					</StackPanel>
+				</HeaderedContentControl>
+			</Border>
+		</StackPanel>
+		<StackPanel Grid.Column="2" Spacing="10" Margin="10,0,0,0" Width="600">
+			<Border BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
+				<HeaderedContentControl Header="Temperature Monitoring">
+					<StackPanel Grid.Column="1" Spacing="10" Margin="5,0,0,0" Width="380">
+						<Grid ColumnDefinitions="*, 2*, *" Margin="5,5,5,0">
+							<TextBlock Grid.Column="0"
+									   Text="Folder Path"
+									   FontWeight="SemiBold"
+									   Foreground="Gray"
+									   HorizontalAlignment="Right"
+									   VerticalAlignment="Center"
+									   Margin="0,0,10,0" />
+							<TextBox Grid.Column="1" Text="{Binding FolderPathAtTM}" Margin="0,0,5,0"/>
+							<Button Grid.Column="2" Margin="5,0,5,0" Content="Select" Command="{Binding SelectFolderAtTMCommand}" CommandParameter="{Binding $parent[Window]}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+						</Grid>
+						<Border Height="1" Background="LightGray" Margin="0" />
+						<Grid ColumnDefinitions="*, *" Margin="5,-5,5,0">
+							<Button Grid.Column="0" Margin="5" Content="Start" Background="GreenYellow" Command="{Binding StartTMCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+							<Button Grid.Column="1" Margin="5" Content="Stop" Background="GreenYellow" Command="{Binding StopTMCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+						</Grid>
+					</StackPanel>
+				</HeaderedContentControl>
+			</Border>
+			<Border BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
+				<HeaderedContentControl Header="Current Monitoring">
+					<StackPanel Grid.Column="1" Spacing="10" Margin="5,0,0,0" Width="580">
+						<Button Margin="0,0,0,5" Content="Refresh"  Command="{Binding RefreshCurrentMonitoringCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+						<Grid ColumnDefinitions="50,50,50,50,50,50,50,50,50,50" RowDefinitions="Auto,Auto,Auto,Auto" Margin="5,0,0,0">
+							<TextBox Grid.Column="0" Grid.Row="0" Text="{Binding Current_data[0]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="1" Grid.Row="0" Text="{Binding Current_data[1]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="2" Grid.Row="0" Text="{Binding Current_data[2]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="3" Grid.Row="0" Text="{Binding Current_data[3]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="4" Grid.Row="0" Text="{Binding Current_data[4]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="5" Grid.Row="0" Text="{Binding Current_data[5]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="6" Grid.Row="0" Text="{Binding Current_data[6]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="7" Grid.Row="0" Text="{Binding Current_data[7]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="8" Grid.Row="0" Text="{Binding Current_data[8]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="9" Grid.Row="0" Text="{Binding Current_data[9]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="0" Grid.Row="1" Text="{Binding Current_data[10]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="1" Grid.Row="1" Text="{Binding Current_data[11]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="2" Grid.Row="1" Text="{Binding Current_data[12]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="3" Grid.Row="1" Text="{Binding Current_data[13]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="4" Grid.Row="1" Text="{Binding Current_data[14]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="5" Grid.Row="1" Text="{Binding Current_data[15]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="6" Grid.Row="1" Text="{Binding Current_data[16]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="7" Grid.Row="1" Text="{Binding Current_data[17]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="8" Grid.Row="1" Text="{Binding Current_data[18]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="9" Grid.Row="1" Text="{Binding Current_data[19]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="0" Grid.Row="2" Text="{Binding Current_data[20]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="1" Grid.Row="2" Text="{Binding Current_data[21]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="2" Grid.Row="2" Text="{Binding Current_data[22]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="3" Grid.Row="2" Text="{Binding Current_data[23]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="4" Grid.Row="2" Text="{Binding Current_data[24]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="5" Grid.Row="2" Text="{Binding Current_data[25]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="6" Grid.Row="2" Text="{Binding Current_data[26]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="7" Grid.Row="2" Text="{Binding Current_data[27]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="8" Grid.Row="2" Text="{Binding Current_data[28]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="9" Grid.Row="2" Text="{Binding Current_data[29]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="0" Grid.Row="3" Text="{Binding Current_data[30]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="1" Grid.Row="3" Text="{Binding Current_data[31]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="2" Grid.Row="3" Text="{Binding Current_data[32]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="3" Grid.Row="3" Text="{Binding Current_data[33]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="4" Grid.Row="3" Text="{Binding Current_data[34]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="5" Grid.Row="3" Text="{Binding Current_data[35]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="6" Grid.Row="3" Text="{Binding Current_data[36]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="7" Grid.Row="3" Text="{Binding Current_data[37]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="8" Grid.Row="3" Text="{Binding Current_data[38]}" FontSize="13" Margin="5" MinWidth="45"/>
+							<TextBox Grid.Column="9" Grid.Row="3" Text="{Binding Current_data[39]}" FontSize="13" Margin="5" MinWidth="45"/>						
+						</Grid>
+					</StackPanel>
+				</HeaderedContentControl>
+			</Border>
+		</StackPanel>
+	</Grid>
+
+</Window>
