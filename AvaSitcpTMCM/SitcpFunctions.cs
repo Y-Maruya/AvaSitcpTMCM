@@ -1,8 +1,12 @@
-﻿using System;
+﻿using Microsoft.Extensions.Configuration;
+using SkiaSharp;
+using System;
 using System.Collections.Generic;
 using System.Data.SqlTypes;
+using System.Globalization; // 追加
 using System.IO;
 using System.Linq;
+using System.Net.Http; // 追加
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
@@ -23,6 +27,8 @@ namespace AvaSitcpTMCM
         private CancellationTokenSource BwWriteTokens = new CancellationTokenSource();
         private CancellationTokenSource DataAcqMultiThreadTokens = new CancellationTokenSource();
         private CancellationTokenSource AutoAcqTokens = new CancellationTokenSource();
+        private CancellationTokenSource InfluxTestTokens = new CancellationTokenSource();
+        private CancellationTokenSource CurrentAcqSendTokens = new CancellationTokenSource();
         byte[] DataBuffer0 = new byte[1024 * 1024];
         byte[] DataBuffer1 = new byte[1024 * 1024];
         byte[] DataBuffer2 = new byte[1024 * 1024];
@@ -58,9 +64,21 @@ namespace AvaSitcpTMCM
         public event Action<string>? SendMessageEvent;
         public event Action<Tuple<int, string>>? SendCurrentEvent;
         public bool IsSendEnabled { get; set; } = false;
+        public string HTTPInfluxUrl = "http://172.27.132.8:8086/write?db=test_TMCM";
+        //public event Action<bool>? IsStartTCPReadFromUserToFileEnabled;
+        //public event Action<bool>? IsStopTCPReadFromUserToFileEnabled;
 
-        public event Action<bool>? IsStartTCPReadFromUserToFileEnabled;
-        public event Action<bool>? IsStopTCPReadFromUserToFileEnabled;
+        public SitcpFunctions()
+        {
+                       // Initialize the DataBuffer arrays
+            DataBuffer0 = new byte[1024 * 1024];
+            DataBuffer1 = new byte[1024 * 1024];
+            DataBuffer2 = new byte[1024 * 1024];
+            DataBuffer3 = new byte[1024 * 1024];
+            var config = new ConfigurationBuilder().SetBasePath(System.AppContext.BaseDirectory).AddJsonFile("appsettings.json", optional: true, reloadOnChange: true).Build();
+            HTTPInfluxUrl = config.GetSection("Settings:HTTPInfluxUrl").Value ?? "http://172.27.132.8:8086/write?db=test_TMCM";
+
+        }
         private byte[] HexStringToByteArray(string HexString)
         {
             int StringNum = HexString.Length;
@@ -182,19 +200,19 @@ namespace AvaSitcpTMCM
             }
             BinaryWriter bw = new BinaryWriter(File.Open(Path.Combine(FileDic, FileName), FileMode.Append, FileAccess.Write, FileShare.Read));
             //write pkg_begin
-                try
-                {
-                    Task DataAcqMultiThreadTask = Task.Factory.StartNew(() => this.DataAcqFunction_MultiThread(DataAcqMultiThreadTokens.Token, BwWriteTokens.Token, TcpReceiveTokens.Token, UserClient, ServerClient, bw), DataAcqMultiThreadTokens.Token);
+            try
+            {
+                Task DataAcqMultiThreadTask = Task.Factory.StartNew(() => this.DataAcqFunction_MultiThread(DataAcqMultiThreadTokens.Token, BwWriteTokens.Token, TcpReceiveTokens.Token, UserClient, ServerClient, bw), DataAcqMultiThreadTokens.Token);
 
-                }
-                catch (AggregateException excption)
+            }
+            catch (AggregateException excption)
+            {
+                foreach (var v in excption.InnerExceptions)
                 {
-                    foreach (var v in excption.InnerExceptions)
-                    {
-                        SendMessageEvent?.Invoke(excption.Message + " " + v.Message);
-                        //MessageTextbox.AppendText(excption.Message + " " + v.Message);
-                    }
+                    SendMessageEvent?.Invoke(excption.Message + " " + v.Message);
+                    //MessageTextbox.AppendText(excption.Message + " " + v.Message);
                 }
+            }
         }
 
         public void StopTCPReadFromUserToFile()
@@ -683,6 +701,167 @@ namespace AvaSitcpTMCM
                 SendCurrentEvent?.Invoke(new Tuple<int, string>(39, current_value[43].ToString()));
             }
         }
+        int CurrentMatrix(int ch)
+        {
+            if (ch == 0) return 0;
+            else if (ch == 1) return 8;
+            else if (ch == 2) return 1;
+            else if (ch == 3) return 9;
+            else if (ch == 4) return 2;
+            else if (ch == 5) return 10;
+            else if (ch == 6) return 3;
+            else if (ch == 7) return 11;
+            else if (ch == 8) return 4;
+            else if (ch == 9) return 12;
+            else if (ch == 10) return 5;
+            else if (ch == 11) return 13;
+            else if (ch == 12) return 6;
+            else if (ch == 13) return 14;
+            else if (ch == 14) return 7;
+            else if (ch == 15) return 15;
+            else if (ch == 16) return 16;
+            else if (ch == 17) return 24;
+            else if (ch == 18) return 17;
+            else if (ch == 19) return 25;
+            else if (ch == 20) return 18;
+            else if (ch == 21) return 26;
+            else if (ch == 22) return 19;
+            else if (ch == 23) return 27;
+            else if (ch == 24) return 20;
+            else if (ch == 25) return 28;
+            else if (ch == 26) return 21;
+            else if (ch == 27) return 29;
+            else if (ch == 28) return 22;
+            else if (ch == 29) return 30;
+            else if (ch == 30) return 23;
+            else if (ch == 31) return 31;
+            else if (ch == 32) return 32;
+            else if (ch == 33) return 40;
+            else if (ch == 34) return 33;
+            else if (ch == 35) return 41;
+            else if (ch == 36) return 34;
+            else if (ch == 37) return 42;
+            else if (ch == 38) return 35;
+            else if (ch == 39) return 43;
+            else throw new ArgumentOutOfRangeException(nameof(ch), "Channel must be between 0 and 39.");
+        }
+        public double DecodeCurrent(int[] dec_word, int channel)
+        {
+            if(channel < 0 || channel >= 39)
+            {
+                throw new ArgumentOutOfRangeException(nameof(channel), "Channel must be between 0 and 39.");
+            }
+            int index = CurrentMatrix(channel);
+            double current_value = (dec_word[index] - 0x00010000) / 65536.0 * 2.5 / 2.0 / 60.0 / 0.005 * 1000;
+            return current_value;
+        }
+
+        public async Task CurrentAcqSendFunction(CancellationToken token, TcpClient UserClient)
+        {
+            byte[] CmdBytes = new byte[2];
+            //Current_Refresh Command is 0x1200
+            CmdBytes[0] = 0x12;
+            CmdBytes[1] = 0x00;
+            NetworkStream stream = UserClient.GetStream();
+            UserClient.ReceiveBufferSize = 192;//48*4
+            UserClient.ReceiveTimeout = 1000;
+            DateTime NowTime = new DateTime();
+            TimeSpan DurationTime = new TimeSpan();
+            byte[] TcpReceiveData = new byte[UserClient.ReceiveBufferSize];
+            while (true)
+            {
+                stream.Write(CmdBytes, 0, CmdBytes.Length);
+                DateTime StartTime = DateTime.Now;
+                int TcpReceiveLength = 0;
+                if (token.IsCancellationRequested == true)
+                {
+                    Thread.Sleep(100);
+                    NowTime = DateTime.Now;
+                    if (stream.DataAvailable)
+                    {
+                        NowTime = DateTime.Now;
+                        TcpReceiveLength = stream.Read(TcpReceiveData, 0, TcpReceiveData.Length);
+                    }
+                    else
+                    {
+                        TcpReceiveLength = 0;
+                        break;
+                    }
+
+                    if (TcpReceiveLength == 0)
+                    {
+                        break;
+                    }
+                    //MessageTextbox.AppendText("Received Data Bytes: " + TcpReceiveLength + "\r\n");
+                    int[] dec_word = new int[48];
+                    for (int i = 0; i < 48; i++)
+                    {
+                        dec_word[i] = (TcpReceiveData[4 * i] << 24) + (TcpReceiveData[4 * i + 1] << 16) + (TcpReceiveData[4 * i + 2] << 8) + TcpReceiveData[4 * i + 3];
+                    }
+                    for (int i = 0; i < 40; i++)
+                    {
+                        double current_value = DecodeCurrent(dec_word, i);
+                        SendCurrentEvent?.Invoke(new Tuple<int, string>(i, current_value.ToString(CultureInfo.InvariantCulture)));
+                        await UploadCurrentToInfluxAsync(i, current_value, NowTime);
+                    }
+                }
+                else
+                {
+                    while (!stream.DataAvailable)
+                    {
+                        NowTime = DateTime.Now;
+                        DurationTime = NowTime - StartTime;
+                        if (DurationTime.TotalMilliseconds > 3000)
+                        {
+                            //MessageBox.Show("No Rata Received");
+                            SendMessageEvent?.Invoke("No Data Received\r\n");
+                            break;
+                        }
+                    }
+                    if (stream.DataAvailable)
+                    {
+                        NowTime = DateTime.Now;
+                        TcpReceiveLength = stream.Read(TcpReceiveData, 0, TcpReceiveData.Length);
+                        int[] dec_word = new int[48];
+                        for (int i = 0; i < 48; i++)
+                        {
+                            dec_word[i] = (TcpReceiveData[4 * i] << 24) + (TcpReceiveData[4 * i + 1] << 16) + (TcpReceiveData[4 * i + 2] << 8) + TcpReceiveData[4 * i + 3];
+                        }
+                        for (int i = 0; i < 40; i++)
+                        {
+                            double current_value = DecodeCurrent(dec_word, i);
+                            SendCurrentEvent?.Invoke(new Tuple<int, string>(i, current_value.ToString(CultureInfo.InvariantCulture)));
+                            await UploadCurrentToInfluxAsync(i, current_value, NowTime);
+                        }
+                    }
+                }
+                await Task.Delay(10000, token);
+            }
+        }
+
+        public void StartCurrentAcqSend()
+        {
+            CurrentAcqSendTokens.Dispose();
+            CurrentAcqSendTokens = new CancellationTokenSource();
+            SendMessageEvent?.Invoke("Current acquisition and send started.\r\n");
+            try
+            {
+                Task CurrentAcqSendTask = Task.Factory.StartNew(() => this.CurrentAcqSendFunction(CurrentAcqSendTokens.Token, UserClient), CurrentAcqSendTokens.Token);
+            }
+            catch (AggregateException excption)
+            {
+                foreach (var v in excption.InnerExceptions)
+                {
+                    SendMessageEvent?.Invoke(excption.Message + " " + v.Message);
+                    //MessageTextbox.AppendText(excption.Message + " " + v.Message);
+                }
+            }
+        }
+        public void StopCurrentAcqSend()
+        {
+            CurrentAcqSendTokens.Cancel();
+            SendMessageEvent?.Invoke("Current acquisition and send stopped.\r\n");
+        }
         private void Received_Data_Size(object a)
         {
             if (SumBytes < 1024)
@@ -705,7 +884,116 @@ namespace AvaSitcpTMCM
             SendMessageEvent?.Invoke(text);
         }
 
+        private static readonly HttpClient httpClient = new HttpClient();
 
+        // InfluxDB書き込み
+        public async Task UploadCurrentToInfluxAsync(int channel, double value, DateTime? timestamp = null)
+        {
+            // InfluxDBの設定
+            var influxUrl = HTTPInfluxUrl;
+            string measurement = "current";
+            string tag = $"channel={channel}";
+            string field = $"value={value.ToString(CultureInfo.InvariantCulture)}";
+            string time = timestamp.HasValue
+                ? $" {((DateTimeOffset)timestamp.Value).ToUnixTimeMilliseconds()}000000"
+                : "";
+
+            // Line Protocol形式
+            string line = $"{measurement},{tag} {field}{time}";
+
+            var content = new StringContent(line, Encoding.UTF8);
+
+            try
+            {
+                var response = await httpClient.PostAsync(influxUrl, content);
+                if (!response.IsSuccessStatusCode)
+                {
+                    SendMessageEvent?.Invoke($"InfluxDB upload failed: {response.StatusCode} {await response.Content.ReadAsStringAsync()}");
+                }
+                else
+                {
+                    //SendMessageEvent?.Invoke($"InfluxDB upload success: {line}");
+                }
+            }
+            catch (Exception ex)
+            {
+                SendMessageEvent?.Invoke($"InfluxDB upload error: {ex.Message}");
+            }
+        }
+        public async Task<bool> CheckInfluxConnectionAsync()
+        {
+            try
+            {
+                // 書き込みURLから/pingエンドポイントを生成
+                var uri = new Uri(HTTPInfluxUrl);
+                var pingUrl = $"{uri.Scheme}://{uri.Host}:{uri.Port}/ping";
+                SendMessageEvent?.Invoke($"Pinging InfluxDB at {pingUrl}...\r\n");
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                var response = await httpClient.GetAsync(pingUrl, cts.Token);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    SendMessageEvent?.Invoke("InfluxDB ping success.\r\n");
+                    return true;
+                }
+                else
+                {
+                    SendMessageEvent?.Invoke($"InfluxDB ping failed: {response.StatusCode}\r\n");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                SendMessageEvent?.Invoke($"InfluxDB ping error: {ex.Message}\r\n");
+                return false;
+            }
+        }
+        public async Task InfluxTestAsync(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                for (int i = 0; i < 40; i++)
+                {
+                    double testValue = i * 0.1; // テスト値
+                    DateTime timestamp = DateTime.Now; // タイムスタンプ
+                    await UploadCurrentToInfluxAsync(i, testValue, timestamp);
+                }
+                await Task.Delay(1000, token); // 1秒ごとに送信
+            }
+        }
+        public void InfluxTestStart()
+        {
+            bool isConnected = true;
+            Task.Run(() => CheckInfluxConnectionAsync()).ContinueWith(task =>
+            {
+                if (task.Result)
+                {
+                    SendMessageEvent?.Invoke("InfluxDB connection check passed.\r\n");
+                }
+                else
+                {
+                    SendMessageEvent?.Invoke("InfluxDB connection check failed.\r\n");
+                    isConnected = false;
+                }
+            });
+            if (!isConnected)
+            {
+                SendMessageEvent?.Invoke("InfluxDB connection is not established. Please check the configuration.\r\n");
+                return;
+            }
+            InfluxTestTokens.Dispose();
+            InfluxTestTokens = new CancellationTokenSource();
+            SendMessageEvent?.Invoke("InfluxDB test started.\r\n");
+            // 非同期で実行
+            Task.Run(() => InfluxTestAsync(InfluxTestTokens.Token));
+        }
+
+        public void InfluxTestStop()
+        {
+            // テスト用のデータ送信を停止
+            SendMessageEvent?.Invoke("InfluxDB test stopped.\r\n");
+            InfluxTestTokens.Cancel();
+        }
 
     }
 }

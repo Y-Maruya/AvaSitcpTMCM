@@ -4,7 +4,8 @@
         x:Class="AvaSitcpTMCM.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="AvaSitcpTMCM"
-        Background="White">
+        Background="White"
+		Width="1300" Height="660">
 
 	<Design.DataContext>
 		<vm:MainWindowViewModel/>
@@ -39,11 +40,13 @@
 		</Style>
 	</Window.Styles>
 
-	<Grid ColumnDefinitions="*, Auto, Auto" Margin="10">
+	<Grid ColumnDefinitions="*, Auto, Auto" Margin="10" RowDefinitions="Auto">
 		<Border Grid.Column="0" BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
 			<HeaderedContentControl Header="Log Output">
 				<Grid>
-					<TextBlock TextWrapping="WrapWithOverflow" Text="{Binding LogText}" Margin="5" Width="150"/>
+					<ScrollViewer VerticalScrollBarVisibility="Auto" Height="640">
+						<TextBlock TextWrapping="WrapWithOverflow" Text="{Binding LogText}" Margin="5" />
+					</ScrollViewer>
 				</Grid>
 			</HeaderedContentControl>
 		</Border>
@@ -158,8 +161,8 @@
 			<Border BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
 				<HeaderedContentControl Header="Current Monitoring">
 					<StackPanel Grid.Column="1" Spacing="10" Margin="5,0,0,0" Width="580">
-						<Button Margin="0,0,0,5" Content="Refresh"  Command="{Binding RefreshCurrentMonitoringCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
-						<Grid ColumnDefinitions="50,50,50,50,50,50,50,50,50,50" RowDefinitions="Auto,Auto,Auto,Auto" Margin="5,0,0,0">
+						<Button Margin="0,0,0,-5" Content="Refresh"  Command="{Binding RefreshCurrentMonitoringCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+						<Grid ColumnDefinitions="50,50,50,50,50,50,50,50,50,50" RowDefinitions="Auto,Auto,Auto,Auto" Margin="05,0,0,0">
 							<TextBox Grid.Column="0" Grid.Row="0" Text="{Binding Current_data[0]}" FontSize="13" Margin="5" MinWidth="45"/>
 							<TextBox Grid.Column="1" Grid.Row="0" Text="{Binding Current_data[1]}" FontSize="13" Margin="5" MinWidth="45"/>
 							<TextBox Grid.Column="2" Grid.Row="0" Text="{Binding Current_data[2]}" FontSize="13" Margin="5" MinWidth="45"/>
@@ -202,6 +205,22 @@
 							<TextBox Grid.Column="9" Grid.Row="3" Text="{Binding Current_data[39]}" FontSize="13" Margin="5" MinWidth="45"/>						
 						</Grid>
 					</StackPanel>
+				</HeaderedContentControl>
+			</Border>
+			<Border BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
+				<HeaderedContentControl Header="Current Measurement and Send to InfluxDB">
+					<Grid ColumnDefinitions="*,*" Margin="5,0,5,0">
+						<Button Grid.Column="0" Margin="5"  Content="Start" Command="{Binding StartCurrentAcqSendCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="GreenYellow"/>
+						<Button Grid.Column="1" Margin="5" Content="Stop" Command="{Binding StopCurrentAcqSendCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="GreenYellow"/>
+					</Grid>
+				</HeaderedContentControl>
+			</Border>
+			<Border BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
+				<HeaderedContentControl Header="InfluxDB Test">
+					<Grid ColumnDefinitions="*,*" Margin="5,0,5,0">
+						<Button Grid.Column="0" Margin="5"  Content="Start" Command="{Binding StartInfluxTestCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+						<Button Grid.Column="1" Margin="5" Content="Stop" Command="{Binding StopInfluxTestCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+					</Grid>
 				</HeaderedContentControl>
 			</Border>
 		</StackPanel>

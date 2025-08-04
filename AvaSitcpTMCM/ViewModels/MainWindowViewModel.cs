@@ -54,6 +54,14 @@ namespace AvaSitcpTMCM.ViewModels
 
         [ObservableProperty]
         private string[] _current_data = new string[40];
+
+        [ObservableProperty]
+        [NotifyCanExecuteChangedFor(nameof(StartCurrentAcqSendCommand))]
+        private bool _isStartCurrentAcqSendEnabled = true;
+
+        [ObservableProperty]
+        [NotifyCanExecuteChangedFor(nameof(StopCurrentAcqSendCommand))]
+        private bool _isStopCurrentAcqSendEnabled = false;
         //[ObservableProperty]
         //private bool _isSendEnabled;
 
@@ -67,6 +75,7 @@ namespace AvaSitcpTMCM.ViewModels
             IpAddress = config.GetSection("Settings:IpAddress").Value ?? "192.168.10.16";
             Port = config.GetSection("Settings:Port").Value ?? "26";
             FolderPathAtTcpReadToFile = config.GetSection("Settings:FolderPathAtTcpReadToFile").Value ?? "";
+            FolderPathAtTM = config.GetSection("Settings:FolderPathAtTM").Value ?? "";
 
             _sitcpFunctions.SendMessageEvent += OnSendMessageEvent;
             _sitcpFunctions.SendCurrentEvent += OnSendCurrentEvent;
@@ -213,6 +222,47 @@ namespace AvaSitcpTMCM.ViewModels
         private void RefreshCurrentMonitoring()
         {
             _sitcpFunctions.Current_Refresh();
+        }
+
+        [RelayCommand]
+        private void StartInfluxTest()
+        {
+            _sitcpFunctions.InfluxTestStart();
+
+        }
+        [RelayCommand]
+        private void StopInfluxTest()
+        {
+            _sitcpFunctions.InfluxTestStop();
+        }
+
+        [RelayCommand(CanExecute = nameof(CanStartCurrentAcqSend))]
+        private void StartCurrentAcqSend()
+        {
+            _sitcpFunctions.StartCurrentAcqSend();
+            IsStartCurrentAcqSendEnabled = false;
+            IsStopCurrentAcqSendEnabled = true;
+        }
+        private bool CanStartCurrentAcqSend()
+        {
+            return IsStartCurrentAcqSendEnabled;
+        }
+
+        [RelayCommand(CanExecute = nameof(CanStopCurrentAcqSend))]
+        private void StopCurrentAcqSend()
+        {
+            _sitcpFunctions.StopCurrentAcqSend();
+            IsStartCurrentAcqSendEnabled = true;
+            IsStopCurrentAcqSendEnabled = false;
+        }
+        private bool CanStopCurrentAcqSend()
+        {
+            return IsStopCurrentAcqSendEnabled;
+        }
+        [RelayCommand]
+        private void ClearLog()
+        {
+            LogText = string.Empty;
         }
     }
 }
