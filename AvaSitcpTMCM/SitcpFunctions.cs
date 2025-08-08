@@ -3,10 +3,10 @@ using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.Data.SqlTypes;
-using System.Globalization; // 追加
+using System.Globalization; 
 using System.IO;
 using System.Linq;
-using System.Net.Http; // 追加
+using System.Net.Http; 
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
@@ -924,7 +924,6 @@ namespace AvaSitcpTMCM
         {
             try
             {
-                // 書き込みURLから/pingエンドポイントを生成
                 var uri = new Uri(HTTPInfluxUrl);
                 var pingUrl = $"{uri.Scheme}://{uri.Host}:{uri.Port}/ping";
                 SendMessageEvent?.Invoke($"Pinging InfluxDB at {pingUrl}...\r\n");

@@ -44,8 +44,16 @@
 		<Border Grid.Column="0" BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
 			<HeaderedContentControl Header="Log Output">
 				<Grid>
-					<ScrollViewer VerticalScrollBarVisibility="Auto" Height="640">
-						<TextBlock TextWrapping="WrapWithOverflow" Text="{Binding LogText}" Margin="5" />
+					<ScrollViewer x:Name="LogScrollViewer" VerticalScrollBarVisibility="Auto" Height="590">
+						<TextBox
+							TextWrapping="Wrap"
+							Text="{Binding LogText}"
+							Margin="5"
+							IsReadOnly="True"
+							BorderThickness="0"
+							Background="Transparent"
+							AcceptsReturn="True"
+							TextChanged="LogTextBox_TextChanged"/>
 					</ScrollViewer>
 				</Grid>
 			</HeaderedContentControl>
