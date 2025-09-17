@@ -29,6 +29,7 @@ namespace AvaSitcpTMCM
         private CancellationTokenSource AutoAcqTokens = new CancellationTokenSource();
         private CancellationTokenSource InfluxTestTokens = new CancellationTokenSource();
         private CancellationTokenSource CurrentAcqSendTokens = new CancellationTokenSource();
+        private CancellationTokenSource TemperatureAcqSendTokens = new CancellationTokenSource();
         byte[] DataBuffer0 = new byte[1024 * 1024];
         byte[] DataBuffer1 = new byte[1024 * 1024];
         byte[] DataBuffer2 = new byte[1024 * 1024];
@@ -63,10 +64,13 @@ namespace AvaSitcpTMCM
         delegate void SetTextCallback(string text);
         public event Action<string>? SendMessageEvent;
         public event Action<Tuple<int, string>>? SendCurrentEvent;
+        public event Action<Tuple<int, string, string, string>>? SendTemperatureEvent;
         public bool IsSendEnabled { get; set; } = false;
         public string HTTPInfluxUrl = "http://172.27.132.8:8086/write?db=test_TMCM";
         //public event Action<bool>? IsStartTCPReadFromUserToFileEnabled;
         //public event Action<bool>? IsStopTCPReadFromUserToFileEnabled;
+        int CurrentSendWaitTimeMs = 1000;
+        int TemperatureSendWaitTimeMs = 1000;
 
         public SitcpFunctions()
         {
@@ -77,7 +81,8 @@ namespace AvaSitcpTMCM
             DataBuffer3 = new byte[1024 * 1024];
             var config = new ConfigurationBuilder().SetBasePath(System.AppContext.BaseDirectory).AddJsonFile("appsettings.json", optional: true, reloadOnChange: true).Build();
             HTTPInfluxUrl = config.GetSection("Settings:HTTPInfluxUrl").Value ?? "http://172.27.132.8:8086/write?db=test_TMCM";
-
+            CurrentSendWaitTimeMs = int.Parse(config.GetSection("Settings:CurrentSendWaitTimeMs").Value ?? "1000");
+            TemperatureSendWaitTimeMs = int.Parse(config.GetSection("Settings:TemperatureSendWaitTimeMs").Value ?? "1000");
         }
         private byte[] HexStringToByteArray(string HexString)
         {
@@ -798,12 +803,16 @@ namespace AvaSitcpTMCM
                     {
                         dec_word[i] = (TcpReceiveData[4 * i] << 24) + (TcpReceiveData[4 * i + 1] << 16) + (TcpReceiveData[4 * i + 2] << 8) + TcpReceiveData[4 * i + 3];
                     }
+                    int[] channels = new int[40];
+                    double[] values = new double[40];
                     for (int i = 0; i < 40; i++)
                     {
+                        channels[i] = i;
                         double current_value = DecodeCurrent(dec_word, i);
+                        values[i] = current_value;
                         SendCurrentEvent?.Invoke(new Tuple<int, string>(i, current_value.ToString(CultureInfo.InvariantCulture)));
-                        await UploadCurrentToInfluxAsync(i, current_value, NowTime);
                     }
+                    await UploadAllChCurrentToInfluxAsync(channels, values, NowTime);
                 }
                 else
                 {
@@ -827,15 +836,19 @@ namespace AvaSitcpTMCM
                         {
                             dec_word[i] = (TcpReceiveData[4 * i] << 24) + (TcpReceiveData[4 * i + 1] << 16) + (TcpReceiveData[4 * i + 2] << 8) + TcpReceiveData[4 * i + 3];
                         }
+                        int[] channels = new int[40];
+                        double[] values = new double[40];
                         for (int i = 0; i < 40; i++)
-                        {
+                        {   
+                            channels[i] = i;
                             double current_value = DecodeCurrent(dec_word, i);
+                            values[i] = current_value;
                             SendCurrentEvent?.Invoke(new Tuple<int, string>(i, current_value.ToString(CultureInfo.InvariantCulture)));
-                            await UploadCurrentToInfluxAsync(i, current_value, NowTime);
                         }
+                        await UploadAllChCurrentToInfluxAsync(channels, values, NowTime);
                     }
                 }
-                await Task.Delay(10000, token);
+                await Task.Delay(CurrentSendWaitTimeMs, token);
             }
         }
 
@@ -862,6 +875,161 @@ namespace AvaSitcpTMCM
             CurrentAcqSendTokens.Cancel();
             SendMessageEvent?.Invoke("Current acquisition and send stopped.\r\n");
         }
+        public async Task TemperatureAcqSendFunction(CancellationToken token, TcpClient UserClient)
+        {
+            byte[] CmdBytes = new byte[2];
+            //Tem_Refresh Command is 0x1100
+            CmdBytes[0] = 0x11;
+            CmdBytes[1] = 0x00;
+            NetworkStream stream = UserClient.GetStream();
+            //UserClient.ReceiveBufferSize = 7680; //40*48*4
+            UserClient.ReceiveBufferSize = 8192; //40*48*4 + some margin
+            UserClient.ReceiveTimeout = 1000;
+            DateTime NowTime = new DateTime();
+            TimeSpan DurationTime = new TimeSpan();
+            byte[] TcpReceiveData = new byte[UserClient.ReceiveBufferSize];
+            while (true)
+            {
+                stream.Write(CmdBytes, 0, CmdBytes.Length);
+                DateTime StartTime = DateTime.Now;
+                int TcpReceiveLength = 0;
+                if (token.IsCancellationRequested == true)
+                {
+                    Thread.Sleep(100);
+                    NowTime = DateTime.Now;
+                    if (stream.DataAvailable)
+                    {
+                        NowTime = DateTime.Now;
+                        TcpReceiveLength = stream.Read(TcpReceiveData, 0, TcpReceiveData.Length);
+                    }
+                    else
+                    {
+                        TcpReceiveLength = 0;
+                        break;
+                    }
+
+                    if (TcpReceiveLength == 0)
+                    {
+                        break;
+                    }
+                    //MessageTextbox.AppendText("Received Data Bytes: " + TcpReceiveLength + "\r\n");
+                    double[] temperatures = new double[40*48];
+                    int[] channels = new int[40*48];
+                    int[] layers = new int[40*48];
+                    double[] maxlayer = new double[40];
+                    double[] avglayer = new double[40];
+                    double[] minlayer = new double[40];
+                    for (int i = 0; i < 40; i++)
+                    {
+                        maxlayer[i] = -100.0;
+                        avglayer[i] = 0.0;
+                        minlayer[i] = 200.0;
+                    }
+                    for (int i = 0; i < 40 * 48; i++)
+                    {
+                        temperatures[i] = (TcpReceiveData[4 * i] * 256 + TcpReceiveData[4 * i + 1]) / 128.0;
+                        channels[i] = TcpReceiveData[4 * i + 2];
+                        layers[i] = TcpReceiveData[4 * i + 3];
+                        if (temperatures[i] > maxlayer[layers[i]])
+                        {
+                            maxlayer[layers[i]] = temperatures[i];
+                        }
+                        if (temperatures[i] < minlayer[layers[i]])
+                        {
+                            minlayer[layers[i]] = temperatures[i];
+                        }
+                        avglayer[layers[i]] += temperatures[i];
+                    }
+                    for (int i = 0; i < 40; i++)
+                    {
+                        avglayer[i] /= 48.0;
+                        SendTemperatureEvent?.Invoke(new Tuple<int, string, string, string>(i, maxlayer[i].ToString("F2", CultureInfo.InvariantCulture), avglayer[i].ToString("F2", CultureInfo.InvariantCulture), minlayer[i].ToString("F2", CultureInfo.InvariantCulture)));
+                    }
+                    await UploadAllChTemperaturetToInfluxAsync(layers, channels, temperatures, NowTime);
+                }
+                else
+                {
+                    while (!stream.DataAvailable)
+                    {
+                        NowTime = DateTime.Now;
+                        DurationTime = NowTime - StartTime;
+                        if (DurationTime.TotalMilliseconds > 3000)
+                        {
+                            //MessageBox.Show("No Rata Received");
+                            SendMessageEvent?.Invoke("No Data Received\r\n");
+                            break;
+                        }
+                    }
+                    if (stream.DataAvailable)
+                    {
+                        NowTime = DateTime.Now;
+                        TcpReceiveLength = stream.Read(TcpReceiveData, 0, TcpReceiveData.Length);
+                        if (TcpReceiveLength != 7680)
+                        {
+                            SendMessageEvent?.Invoke("Warning: Received Data Length is not 7680 Bytes\r\n");
+                            continue;
+                        }
+                        double[] temperatures = new double[40 * 48];
+                        int[] channels = new int[40 * 48];
+                        int[] layers = new int[40 * 48];
+                        double[] maxlayer = new double[40];
+                        double[] avglayer = new double[40];
+                        double[] minlayer = new double[40];
+                        for (int i = 0; i < 40; i++)
+                        {
+                            maxlayer[i] = -100.0;
+                            avglayer[i] = 0.0;
+                            minlayer[i] = 200.0;
+                        }
+                        for (int i = 0; i < 40 * 48; i++)
+                        {
+                            temperatures[i] = (TcpReceiveData[4 * i] * 256 + TcpReceiveData[4 * i + 1]) / 128.0;
+                            channels[i] = TcpReceiveData[4 * i + 2];
+                            layers[i] = TcpReceiveData[4 * i + 3];
+                            if (temperatures[i] > maxlayer[layers[i]])
+                            {
+                                maxlayer[layers[i]] = temperatures[i];
+                            }
+                            if (temperatures[i] < minlayer[layers[i]])
+                            {
+                                minlayer[layers[i]] = temperatures[i];
+                            }
+                            avglayer[layers[i]] += temperatures[i];
+                        }
+                        for (int i = 0; i < 40; i++)
+                        {
+                            avglayer[i] /= 48.0;
+                            SendTemperatureEvent?.Invoke(new Tuple<int, string, string, string>(i, maxlayer[i].ToString("F2", CultureInfo.InvariantCulture), avglayer[i].ToString("F2", CultureInfo.InvariantCulture), minlayer[i].ToString("F2", CultureInfo.InvariantCulture)));
+                        }
+                        await UploadAllChTemperaturetToInfluxAsync(layers, channels, temperatures, NowTime);
+                    }
+                }
+                await Task.Delay(TemperatureSendWaitTimeMs, token);
+            }
+        }
+        public void StartTemperatureAcqSend()
+        {
+            TemperatureAcqSendTokens.Dispose();
+            TemperatureAcqSendTokens = new CancellationTokenSource();
+            SendMessageEvent?.Invoke("Temperature acquisition and send started.\r\n");
+            try
+            {
+                Task TemperatureAcqSendTask = Task.Factory.StartNew(() => this.TemperatureAcqSendFunction(TemperatureAcqSendTokens.Token, UserClient), TemperatureAcqSendTokens.Token);
+            }
+            catch (AggregateException excption)
+            {
+                foreach (var v in excption.InnerExceptions)
+                {
+                    SendMessageEvent?.Invoke(excption.Message + " " + v.Message);
+                    //MessageTextbox.AppendText(excption.Message + " " + v.Message);
+                }
+            }
+        }
+        public void StopTemperatureAcqSend()
+        {
+            TemperatureAcqSendTokens.Cancel();
+            SendMessageEvent?.Invoke("Temperature acquisition and send stopped.\r\n");
+        }
         private void Received_Data_Size(object a)
         {
             if (SumBytes < 1024)
@@ -887,21 +1055,70 @@ namespace AvaSitcpTMCM
         private static readonly HttpClient httpClient = new HttpClient();
 
         // InfluxDB書き込み
-        public async Task UploadCurrentToInfluxAsync(int channel, double value, DateTime? timestamp = null)
+
+        public async Task UploadAllChCurrentToInfluxAsync(int[] channels, double[] values, DateTime? timestamp = null)
         {
             // InfluxDBの設定
             var influxUrl = HTTPInfluxUrl;
             string measurement = "current";
-            string tag = $"channel={channel}";
-            string field = $"value={value.ToString(CultureInfo.InvariantCulture)}";
+            var lineBuilder = new StringBuilder();
             string time = timestamp.HasValue
                 ? $" {((DateTimeOffset)timestamp.Value).ToUnixTimeMilliseconds()}000000"
                 : "";
+            for (int i = 0; i < channels.Length; i++)
+            {
+                string tag = $"layer={channels[i]}";
+                string field = $"value={values[i].ToString(CultureInfo.InvariantCulture)}";
+                // Line Protocol形式
+                lineBuilder.Append(measurement).Append(',').Append(tag).Append(' ').Append(field).Append(time).Append('\n');
+            }
+            // 末尾の改行を削除
+            if (lineBuilder.Length > 0)
+            {
+                lineBuilder.Length--; 
+            }
+            var content = new StringContent(lineBuilder.ToString(), Encoding.UTF8);
 
-            // Line Protocol形式
-            string line = $"{measurement},{tag} {field}{time}";
+            try
+            {
+                var response = await httpClient.PostAsync(influxUrl, content);
+                if (!response.IsSuccessStatusCode)
+                {
+                    SendMessageEvent?.Invoke($"InfluxDB upload failed: {response.StatusCode} {await response.Content.ReadAsStringAsync()}");
+                }
+                else
+                {
+                    //SendMessageEvent?.Invoke($"InfluxDB upload success: {line}");
+                }
+            }
+            catch (Exception ex)
+            {
+                SendMessageEvent?.Invoke($"InfluxDB upload error: {ex.Message}");
+            }
+        }
 
-            var content = new StringContent(line, Encoding.UTF8);
+        public async Task UploadAllChTemperaturetToInfluxAsync(int[] layers, int[] channels, double[] values, DateTime? timestamp = null)
+        {
+            // InfluxDBの設定
+            var influxUrl = HTTPInfluxUrl;
+            string measurement = "temperature";
+            var lineBuilder = new StringBuilder();
+            string time = timestamp.HasValue
+                ? $" {((DateTimeOffset)timestamp.Value).ToUnixTimeMilliseconds()}000000"
+                : "";
+            for (int i = 0; i < channels.Length; i++)
+            {
+                string tag = $"layer={layers[i]},channel={channels[i]}";
+                string field = $"value={values[i].ToString(CultureInfo.InvariantCulture)}";
+                // Line Protocol形式
+                lineBuilder.Append(measurement).Append(',').Append(tag).Append(' ').Append(field).Append(time).Append('\n');
+            }
+            // 末尾の改行を削除
+            if (lineBuilder.Length > 0)
+            {
+                lineBuilder.Length--;
+            }
+            var content = new StringContent(lineBuilder.ToString(), Encoding.UTF8);
 
             try
             {
@@ -951,12 +1168,16 @@ namespace AvaSitcpTMCM
         {
             while (!token.IsCancellationRequested)
             {
+                int[] testLayers = new int[40];
+                double[] testdata = new double[40];
+                DateTime timestamp = DateTime.Now; // タイムスタンプ
                 for (int i = 0; i < 40; i++)
                 {
                     double testValue = i * 0.1; // テスト値
-                    DateTime timestamp = DateTime.Now; // タイムスタンプ
-                    await UploadCurrentToInfluxAsync(i, testValue, timestamp);
+                    testLayers[i] = i;
+                    testdata[i] = (testValue * 1000); // ミリアンペアに変換
                 }
+                await UploadAllChCurrentToInfluxAsync(testLayers, testdata, DateTime.Now);
                 await Task.Delay(1000, token); // 1秒ごとに送信
             }
         }

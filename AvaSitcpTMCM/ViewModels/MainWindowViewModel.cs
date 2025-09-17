@@ -56,12 +56,29 @@ namespace AvaSitcpTMCM.ViewModels
         private string[] _current_data = new string[40];
 
         [ObservableProperty]
+        private string[] _temperature_max_data = new string[40];
+
+        [ObservableProperty]
+        private string[] _temperature_avg_data = new string[40];
+
+        [ObservableProperty]
+        private string[] _temperature_min_data = new string[40];
+
+        [ObservableProperty]
         [NotifyCanExecuteChangedFor(nameof(StartCurrentAcqSendCommand))]
         private bool _isStartCurrentAcqSendEnabled = true;
 
         [ObservableProperty]
         [NotifyCanExecuteChangedFor(nameof(StopCurrentAcqSendCommand))]
         private bool _isStopCurrentAcqSendEnabled = false;
+
+        [ObservableProperty]
+        [NotifyCanExecuteChangedFor(nameof(StartTemperatureAcqSendCommand))]
+        private bool _isStartTemperatureAcqSendEnabled = true;
+
+        [ObservableProperty]
+        [NotifyCanExecuteChangedFor(nameof(StopTemperatureAcqSendCommand))]
+        private bool _isStopTemperatureAcqSendEnabled = false;
         //[ObservableProperty]
         //private bool _isSendEnabled;
 
@@ -79,6 +96,7 @@ namespace AvaSitcpTMCM.ViewModels
 
             _sitcpFunctions.SendMessageEvent += OnSendMessageEvent;
             _sitcpFunctions.SendCurrentEvent += OnSendCurrentEvent;
+            _sitcpFunctions.SendTemperatureEvent += OnSendTemperatureEvent;
         }
         public bool IsSendEnabled
         {
@@ -102,6 +120,16 @@ namespace AvaSitcpTMCM.ViewModels
             Dispatcher.UIThread.Post(() =>
             {
                 Current_data[currentData.Item1] = currentData.Item2;
+            });
+        }
+        private void OnSendTemperatureEvent(Tuple<int, string, string, string> temperatureData)
+        {
+            if (temperatureData.Item1 < 0 || temperatureData.Item1 > 39) return;
+            Dispatcher.UIThread.Post(() =>
+            {
+                Temperature_max_data[temperatureData.Item1] = temperatureData.Item2;
+                Temperature_avg_data[temperatureData.Item1] = temperatureData.Item3;
+                Temperature_min_data[temperatureData.Item1] = temperatureData.Item4;
             });
         }
         [RelayCommand]
@@ -258,6 +286,28 @@ namespace AvaSitcpTMCM.ViewModels
         private bool CanStopCurrentAcqSend()
         {
             return IsStopCurrentAcqSendEnabled;
+        }
+        [RelayCommand(CanExecute = nameof(CanStartTemperatureAcqSend))]
+        private void StartTemperatureAcqSend()
+        {
+            _sitcpFunctions.StartTemperatureAcqSend();
+            IsStartTemperatureAcqSendEnabled = false;
+            IsStopTemperatureAcqSendEnabled = true;
+        }
+        private bool CanStartTemperatureAcqSend()
+        {
+            return IsStartTemperatureAcqSendEnabled;
+        }
+        [RelayCommand(CanExecute = nameof(CanStopTemperatureAcqSend))]
+        private void StopTemperatureAcqSend()
+        {
+            _sitcpFunctions.StopTemperatureAcqSend();
+            IsStartTemperatureAcqSendEnabled = true;
+            IsStopTemperatureAcqSendEnabled = false;
+        }
+        private bool CanStopTemperatureAcqSend()
+        {
+            return IsStopTemperatureAcqSendEnabled;
         }
         [RelayCommand]
         private void ClearLog()
