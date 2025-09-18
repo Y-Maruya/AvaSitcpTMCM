@@ -1,0 +1,24 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:AvaSitcpTMCM.Views"
+        mc:Ignorable="d"
+        x:Class="AvaSitcpTMCM.Views.SecondWindow"
+        x:DataType="local:SecondWindow"
+        Title="Monitoring Window" Width="800" Height="600">
+
+	<ScrollViewer>
+		<DataGrid AutoGenerateColumns="False"
+                  ItemsSource="{Binding Layers}"
+                  CanUserResizeColumns="True">
+			<DataGrid.Columns>
+				<DataGridTextColumn Header="Layer" Binding="{Binding Layer}" Width="*"/>
+				<DataGridTextColumn Header="Current [mA]" Binding="{Binding Current}" Width="*"/>
+				<DataGridTextColumn Header="Temp Max [°C]" Binding="{Binding TempMax}" Width="*"/>
+				<DataGridTextColumn Header="Temp Avg [°C]" Binding="{Binding TempAvg}" Width="*"/>
+				<DataGridTextColumn Header="Temp Min [°C]" Binding="{Binding TempMin}" Width="*"/>
+			</DataGrid.Columns>
+		</DataGrid>
+	</ScrollViewer>
+</Window>

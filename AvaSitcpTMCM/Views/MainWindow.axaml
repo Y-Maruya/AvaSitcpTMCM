@@ -142,6 +142,11 @@
 					</StackPanel>
 				</HeaderedContentControl>
 			</Border>
+			<Border BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
+				<HeaderedContentControl Header="Monitoring Window">
+					<Button Content="Open" Click="OnOpenMonitorClicked"  HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+				</HeaderedContentControl>
+			</Border>
 		</StackPanel>
 		<StackPanel Grid.Column="2" Spacing="10" Margin="10,0,0,0" Width="600">
 			<Border BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
