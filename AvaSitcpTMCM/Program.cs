@@ -14,7 +14,7 @@ namespace AvaSitcpTMCM
         public static void Main(string[] args)
         {
 
-            if (args.Length > 0)
+            if (args[0]== "-cli")
             {
                 RunCli(args);
             }
@@ -50,11 +50,10 @@ namespace AvaSitcpTMCM
                         break;
                     case "-r":
                         maxRetry = int.Parse(args[++i]);
-                        if (maxRetry > 10)
-                        {
-                            Console.WriteLine("maxRetry over 10, assume it is infinity");
-                        }
                         break;
+                    case "-h":
+                        Console.WriteLine("Usage: AvaSitcpTMCM -cli [-ip <IP Address>] [-port <Port>] [-r <Max Retry>]");
+                        return;
                 }
             }
             var stopDaqCts = new CancellationTokenSource();
@@ -62,7 +61,7 @@ namespace AvaSitcpTMCM
             Console.CancelKeyPress += (sender, e) =>
             {
                 e.Cancel = true; // Prevent the process from terminating immediately
-                Console.WriteLine("Ctrl+C detected. Stopping DAQ...");
+                Console.WriteLine("Ctrl+C detected. Stopping Monitoring...");
                 stopDaqCts.Cancel();
             };
 
@@ -71,9 +70,21 @@ namespace AvaSitcpTMCM
             {
                 var sitcp = new SitcpFunctions();
                 sitcp.SendMessageEvent += Console.Write;
-                sitcp.UserConnect(userIp, userPort);
                 Console.WriteLine($"Connecting to {userIp}:{userPort}");
-                sitcp.CheckInfluxConnectionAsync().Wait();
+                if (sitcp.UserConnect(userIp, userPort) != 0 || stopDaqCts.Token.IsCancellationRequested)
+                {
+                    j++;
+                    Console.WriteLine($"Connection failed. Retrying {j}/{maxRetry}...");
+                    continue;
+                }
+                Console.WriteLine("Connectting to the influxDB");
+                bool a = sitcp.CheckInfluxConnectionAsync().GetAwaiter().GetResult();
+                if (a == false)
+                {
+                    j++;
+                    Console.WriteLine($"Connection to influxDB failed. Retrying {j}/{maxRetry}...");
+                    continue;
+                }
                 Thread.Sleep(1000); // Wait for a second to ensure connection is established
                 Console.WriteLine("Starting data acquisition. Press Ctrl+C or press-S to stop.");
                 try

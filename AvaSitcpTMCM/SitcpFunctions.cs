@@ -94,7 +94,7 @@ namespace AvaSitcpTMCM
             }
             return hexBytes;
         }
-        public void UserConnect(string ip, int port)
+        public int UserConnect(string ip, int port)
         {
             try
             {
@@ -104,10 +104,12 @@ namespace AvaSitcpTMCM
                 }
                 UserClient.Connect(ip, port);
                 SendMessageEvent?.Invoke("IP: " + ip + " Port: " + port + " connected successfully\r\n");
+                return 0;
             }
             catch (Exception ex)
             {
                 SendMessageEvent?.Invoke("Failed to connect to " + ip + ":" + port + ". Error: " + ex.Message + "\r\n");
+                return -1;
             }
         }
 
