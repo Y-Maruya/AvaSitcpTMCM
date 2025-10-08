@@ -1054,11 +1054,11 @@ namespace AvaSitcpTMCM
 
         private static readonly HttpClient httpClient = new HttpClient();
 
-        // InfluxDB書き込み
+        // sending current data to InfluxDB
 
         public async Task UploadAllChCurrentToInfluxAsync(int[] channels, double[] values, DateTime? timestamp = null)
         {
-            // InfluxDBの設定
+            // setting up the InfluxDB
             var influxUrl = HTTPInfluxUrl;
             string measurement = "current";
             var lineBuilder = new StringBuilder();
@@ -1069,10 +1069,10 @@ namespace AvaSitcpTMCM
             {
                 string tag = $"layer={channels[i]}";
                 string field = $"value={values[i].ToString(CultureInfo.InvariantCulture)}";
-                // Line Protocol形式
+                // Line Protocol
                 lineBuilder.Append(measurement).Append(',').Append(tag).Append(' ').Append(field).Append(time).Append('\n');
             }
-            // 末尾の改行を削除
+            // remove the last newline
             if (lineBuilder.Length > 0)
             {
                 lineBuilder.Length--; 
@@ -1099,7 +1099,7 @@ namespace AvaSitcpTMCM
 
         public async Task UploadAllChTemperaturetToInfluxAsync(int[] layers, int[] channels, double[] values, DateTime? timestamp = null)
         {
-            // InfluxDBの設定
+            // setting up the InfluxDB
             var influxUrl = HTTPInfluxUrl;
             string measurement = "temperature";
             var lineBuilder = new StringBuilder();
@@ -1110,10 +1110,10 @@ namespace AvaSitcpTMCM
             {
                 string tag = $"layer={layers[i]},channel={channels[i]}";
                 string field = $"value={values[i].ToString(CultureInfo.InvariantCulture)}";
-                // Line Protocol形式
+                // Line Protocol
                 lineBuilder.Append(measurement).Append(',').Append(tag).Append(' ').Append(field).Append(time).Append('\n');
             }
-            // 末尾の改行を削除
+            // remove the last newline
             if (lineBuilder.Length > 0)
             {
                 lineBuilder.Length--;
@@ -1170,15 +1170,15 @@ namespace AvaSitcpTMCM
             {
                 int[] testLayers = new int[40];
                 double[] testdata = new double[40];
-                DateTime timestamp = DateTime.Now; // タイムスタンプ
+                DateTime timestamp = DateTime.Now; // timestamp
                 for (int i = 0; i < 40; i++)
                 {
-                    double testValue = i * 0.1; // テスト値
+                    double testValue = i * 0.1; // test value
                     testLayers[i] = i;
-                    testdata[i] = (testValue * 1000); // ミリアンペアに変換
+                    testdata[i] = (testValue * 1000); // convert to mA
                 }
                 await UploadAllChCurrentToInfluxAsync(testLayers, testdata, DateTime.Now);
-                await Task.Delay(1000, token); // 1秒ごとに送信
+                await Task.Delay(1000, token); // sending with 1s interval
             }
         }
         public void InfluxTestStart()
@@ -1204,13 +1204,13 @@ namespace AvaSitcpTMCM
             InfluxTestTokens.Dispose();
             InfluxTestTokens = new CancellationTokenSource();
             SendMessageEvent?.Invoke("InfluxDB test started.\r\n");
-            // 非同期で実行
+            // execute with async
             Task.Run(() => InfluxTestAsync(InfluxTestTokens.Token));
         }
 
         public void InfluxTestStop()
         {
-            // テスト用のデータ送信を停止
+            // stop the sending task
             SendMessageEvent?.Invoke("InfluxDB test stopped.\r\n");
             InfluxTestTokens.Cancel();
         }

@@ -17,7 +17,7 @@ namespace AvaSitcpTMCM.Views
             InitializeComponent();
             DataContext = this;
 
-            // 初期ダミーデータ（0で埋める）
+            // initial dummy data
             for (int i = 0; i < 40; i++)
             {
                 Layers.Add(new LayerDisplay
@@ -31,7 +31,7 @@ namespace AvaSitcpTMCM.Views
             }
         }
 
-        // MainWindowViewModel からデータを反映させるメソッド
+        // getter from MainWindowViewModel
         public void SetViewModel(MainWindowViewModel vm)
         {
             vm.PropertyChanged += (s, e) =>
@@ -54,7 +54,7 @@ namespace AvaSitcpTMCM.Views
                 }
             };
 
-            // 初期値反映
+            // apply initial data
             Dispatcher.UIThread.Post(() =>
             {
                 for (int i = 0; i < 40; i++)
