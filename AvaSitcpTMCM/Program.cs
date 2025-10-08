@@ -1,5 +1,7 @@
-﻿using System;
-using Avalonia;
+﻿using Avalonia;
+using Microsoft.Extensions.Configuration;
+using System;
+using System.Threading;
 
 namespace AvaSitcpTMCM
 {
@@ -9,8 +11,105 @@ namespace AvaSitcpTMCM
         // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
         // yet and stuff might break.
         [STAThread]
-        public static void Main(string[] args) => BuildAvaloniaApp()
-            .StartWithClassicDesktopLifetime(args);
+        public static void Main(string[] args)
+        {
+
+            if (args.Length > 0)
+            {
+                RunCli(args);
+            }
+            else
+            {
+                BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+            }
+        }
+
+        // CLI mode for running the application
+        private static void RunCli(string[] args)
+        {
+            var config = new ConfigurationBuilder().SetBasePath(System.AppContext.BaseDirectory).AddJsonFile("appsettings.json", optional: true, reloadOnChange: true).Build();
+
+            string userIp = config.GetSection("Settings:IpAddress").Value ?? "193.1689.11.17";
+            string Port = config.GetSection("Settings:Port").Value ?? "25";
+            //string FolderPathAtTcpReadToFile = config.GetSection("Settings:FolderPathAtTcpReadToFile").Value ?? "";
+            //string runNumber = config.GetSection("Setting:RunNumber").Value ?? "";
+             int maxRetry = int.TryParse(config.GetSection("Settings:MaxRetry").Value, out var retry) ? retry : 3;
+            // ex:  --user-ip 192.168.10.16 --user-port 24
+            int userPort = int.TryParse(Port, out var port) ? port : 25;
+            //string folder = FolderPathAtTcpReadToFile;
+
+            for (int i = 1; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "-ip":
+                        userIp = args[++i];
+                        break;
+                    case "-port":
+                        userPort = int.Parse(args[++i]);
+                        break;
+                    case "-r":
+                        maxRetry = int.Parse(args[++i]);
+                        if (maxRetry > 10)
+                        {
+                            Console.WriteLine("maxRetry over 10, assume it is infinity");
+                        }
+                        break;
+                }
+            }
+            var stopDaqCts = new CancellationTokenSource();
+
+            Console.CancelKeyPress += (sender, e) =>
+            {
+                e.Cancel = true; // Prevent the process from terminating immediately
+                Console.WriteLine("Ctrl+C detected. Stopping DAQ...");
+                stopDaqCts.Cancel();
+            };
+
+            int j = 0;
+            while (j < maxRetry)
+            {
+                var sitcp = new SitcpFunctions();
+                sitcp.SendMessageEvent += Console.Write;
+                sitcp.UserConnect(userIp, userPort);
+                Console.WriteLine($"Connecting to {userIp}:{userPort}");
+                sitcp.CheckInfluxConnectionAsync().Wait();
+                Thread.Sleep(1000); // Wait for a second to ensure connection is established
+                Console.WriteLine("Starting data acquisition. Press Ctrl+C or press-S to stop.");
+                try
+                {
+                    sitcp.StartTemperatureAcqSend();
+                    sitcp.StartCurrentAcqSend();
+                    // Keep the application running until cancellation is requested
+                    while (!stopDaqCts.Token.IsCancellationRequested)
+                    {
+                        if (Console.KeyAvailable)
+                        {
+                            if (Console.ReadKey(true).Key == ConsoleKey.S)
+                            {
+                                Console.WriteLine("'S' key pressed. Stopping Monitoring...");
+                                stopDaqCts.Cancel();
+                            }
+                        }
+                        Thread.Sleep(100); // Sleep briefly to reduce CPU usage
+                    }
+                    sitcp.StopTemperatureAcqSend();
+                    sitcp.StopCurrentAcqSend();
+                    Console.WriteLine("Data acquisition stopped. Exiting application.");
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error during data acquisition: {ex.Message}");
+                    // TODO: Handle the TCP disconnection and attempt to reconnect.
+                    Console.WriteLine("Retry to exexute");
+                    sitcp.StopCurrentAcqSend();
+                    sitcp.StopTemperatureAcqSend();
+                    j++;
+                }
+            }
+            return;
+        }
 
         // Avalonia configuration, don't remove; also used by visual designer.
         public static AppBuilder BuildAvaloniaApp()
@@ -20,3 +119,4 @@ namespace AvaSitcpTMCM
                 .LogToTrace();
     }
 }
+

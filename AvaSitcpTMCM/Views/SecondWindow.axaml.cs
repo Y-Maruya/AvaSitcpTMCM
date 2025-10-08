@@ -22,7 +22,7 @@ namespace AvaSitcpTMCM.Views
             {
                 Layers.Add(new LayerDisplay
                 {
-                    Layer = i + 1,
+                    Layer = i,
                     Current = "0",
                     TempMax = "0",
                     TempAvg = "0",
