@@ -163,12 +163,12 @@ namespace AvaSitcpTMCM
                     byte[] CmdBytes = new byte[hexBytes.Length];
                     for (int i = 0; i < hexBytes.Length; i++)
                     {
-                        CmdBytes[i] = hexBytes[hexBytes.Length - 1 - i];
+                        CmdBytes[i] = hexBytes[i]; // HexString to byte array does not need further inversion
                     }
                     NetworkStream stream = UserClient.GetStream();
                     stream.Write(CmdBytes, 0, CmdBytes.Length);
                     SendMessageEvent?.Invoke(HexString + " sent successfully\r\n");
-                    SendMessageEvent?.Invoke("Sent Data: " + BitConverter.ToString(CmdBytes).Replace("-", " ") + "\r\n"); // 表示改善
+                    SendMessageEvent?.Invoke("Sent Data: " + BitConverter.ToString(CmdBytes).Replace("-", " ") + "\r\n");
                 }
                 catch (Exception ex)
                 {
@@ -604,7 +604,7 @@ namespace AvaSitcpTMCM
         private void TM_threadFunc(CancellationToken taskToken, TcpClient UserClient, BinaryWriter bw)
         {
             byte[] CmdBytes = new byte[2];
-            //Current_Refresh Command is 0x1100
+            //temperature Refresh Command is 0x1100
             CmdBytes[0] = 0x11;
             CmdBytes[1] = 0x00;
             NetworkStream stream = UserClient.GetStream();
@@ -1060,7 +1060,7 @@ namespace AvaSitcpTMCM
         public async Task StatusAcqSendFunction(CancellationToken token, TcpClient UserClient)
         {
             byte[] CmdBytes = new byte[2];
-            //Current_Refresh Command is 0x1300
+            //Status Refresh Command is 0x1300
             CmdBytes[0] = 0x13;
             CmdBytes[1] = 0x00;
             NetworkStream stream = UserClient.GetStream();

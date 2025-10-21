@@ -168,6 +168,7 @@ namespace AvaSitcpTMCM
             Console.WriteLine("Select the test to perform:");
             Console.WriteLine("1. TCP Connection Test");
             Console.WriteLine("2. InfluxDB Connection Test");
+            Console.WriteLine("3. Monitoring Data Acquisition Test");
             string choice = Console.ReadLine();
             if (choice != null)
             {
@@ -203,6 +204,23 @@ namespace AvaSitcpTMCM
                         Console.WriteLine("InfluxDB Connection Test Succeeded.");
                     }
                     Console.WriteLine("Test finished.");
+                    return;
+                }
+                else if (choice == "3")
+                {
+                    var sitcp = new SitcpFunctions();
+                    sitcp.SendMessageEvent += Console.Write;
+                    sitcp.SendCurrentEvent += (s) => Console.WriteLine(s);
+                    Console.WriteLine($"Connecting to {userIp}:{userPort}");
+                    if (sitcp.UserConnect(userIp, userPort) != 0)
+                    {
+                        Console.WriteLine("TCP Connection Failed. Cannot perform Monitoring Data Acquisition Test.");
+                        return;
+                    }
+                    Console.WriteLine("Starting data acquisition test.");
+                    Console.WriteLine("Acquiring current data");
+                    sitcp.Current_Refresh();
+                    Console.WriteLine("Monitoring Data Acquisition Test completed.");
                     return;
                 }
                 else
