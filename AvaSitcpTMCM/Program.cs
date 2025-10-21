@@ -85,15 +85,36 @@ namespace AvaSitcpTMCM
                 {
                     j++;
                     Console.WriteLine($"Connection to influxDB failed. Retrying {j}/{maxRetry}...");
+                    sitcp.UserDisconnect();
                     continue;
                 }
                 Thread.Sleep(1000); // Wait for a second to ensure connection is established
+                Console.WriteLine($"Connected to InfluxDB successfully. \n\r");
+                Console.WriteLine($"URL: {sitcp.GetInfluxUrl()}\n\r");
+                Console.WriteLine("Press S to start data acquisition...");
+                while (true)
+                {
+                    if (Console.KeyAvailable)
+                    {
+                        if (Console.ReadKey(true).Key == ConsoleKey.S)
+                        {
+                            Console.WriteLine("'S' key pressed. Starting Monitoring...");
+                            break;
+                        }
+                    }
+                    if (stopDaqCts.Token.IsCancellationRequested)
+                    {
+                        Console.WriteLine("Cancellation requested before starting data acquisition. Exiting...");
+                        sitcp.UserDisconnect();
+                        return;
+                    }
+                    Thread.Sleep(100); // Sleep briefly to reduce CPU usage
+                }
                 Console.WriteLine("Starting data acquisition. Press Ctrl+C or press-S to stop.");
+
                 try
                 {
-                    sitcp.StartTemperatureAcqSend();
-                    sitcp.StartCurrentAcqSend();
-                    sitcp.StartStatusAcqSend();
+                    sitcp.StartAllAcqSend();
                     // Keep the application running until cancellation is requested
                     while (!stopDaqCts.Token.IsCancellationRequested)
                     {
@@ -107,9 +128,8 @@ namespace AvaSitcpTMCM
                         }
                         Thread.Sleep(100); // Sleep briefly to reduce CPU usage
                     }
-                    sitcp.StopTemperatureAcqSend();
-                    sitcp.StopCurrentAcqSend();
-                    sitcp.StopStatusAcqSend();
+                    sitcp.StopAllAcqSend();
+                    sitcp.UserDisconnect();
                     Console.WriteLine("Data acquisition stopped. Exiting application.");
                     break;
                 }
@@ -118,12 +138,12 @@ namespace AvaSitcpTMCM
                     Console.WriteLine($"Error during data acquisition: {ex.Message}");
                     // TODO: Handle the TCP disconnection and attempt to reconnect.
                     Console.WriteLine("Retry to exexute");
-                    sitcp.StopCurrentAcqSend();
-                    sitcp.StopTemperatureAcqSend();
-                    sitcp.StopStatusAcqSend();
+                    sitcp.StopAllAcqSend();
+                    sitcp.UserDisconnect();
                     j++;
                 }
             }
+
             return;
         }
 
@@ -187,6 +207,7 @@ namespace AvaSitcpTMCM
                         Console.WriteLine("TCP Connection Test Succeeded.");
                     }
                     Console.WriteLine("Test finished.");
+                    sitcp.UserDisconnect();
                     return;
                 }
                 else if (choice == "2")
@@ -221,6 +242,7 @@ namespace AvaSitcpTMCM
                     Console.WriteLine("Acquiring current data");
                     sitcp.Current_Refresh();
                     Console.WriteLine("Monitoring Data Acquisition Test completed.");
+                    sitcp.UserDisconnect();
                     return;
                 }
                 else
