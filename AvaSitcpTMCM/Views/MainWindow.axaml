@@ -5,7 +5,7 @@
         x:DataType="vm:MainWindowViewModel"
         Title="AvaSitcpTMCM"
         Background="White"
-		Width="1300" Height="800">
+		Width="1300" Height="850">
 
 	<Design.DataContext>
 		<vm:MainWindowViewModel/>
@@ -233,6 +233,14 @@
 					<Grid ColumnDefinitions="*,*" Margin="5,0,5,0">
 						<Button Grid.Column="0" Margin="5"  Content="Start" Command="{Binding StartTemperatureAcqSendCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="GreenYellow"/>
 						<Button Grid.Column="1" Margin="5" Content="Stop" Command="{Binding StopTemperatureAcqSendCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="GreenYellow"/>
+					</Grid>
+				</HeaderedContentControl>
+			</Border>
+			<Border BorderBrush="LightGray" BoxShadow="0 0 10 2 #3F000000" BorderThickness="1" CornerRadius="4" Padding="10">
+				<HeaderedContentControl Header="Connection Status Check and Send to InfluxDB">
+					<Grid ColumnDefinitions="*,*" Margin="5,0,5,0">
+						<Button Grid.Column="0" Margin="5"  Content="Start" Command="{Binding StartStatusAcqSendCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="GreenYellow"/>
+						<Button Grid.Column="1" Margin="5" Content="Stop" Command="{Binding StopStatusAcqSendCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Background="GreenYellow"/>
 					</Grid>
 				</HeaderedContentControl>
 			</Border>

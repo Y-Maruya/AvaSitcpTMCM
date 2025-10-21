@@ -10,8 +10,10 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+
 
 namespace AvaSitcpTMCM
 {
@@ -30,6 +32,7 @@ namespace AvaSitcpTMCM
         private CancellationTokenSource InfluxTestTokens = new CancellationTokenSource();
         private CancellationTokenSource CurrentAcqSendTokens = new CancellationTokenSource();
         private CancellationTokenSource TemperatureAcqSendTokens = new CancellationTokenSource();
+        private CancellationTokenSource StatusAcqSendTokens = new CancellationTokenSource();
         byte[] DataBuffer0 = new byte[1024 * 1024];
         byte[] DataBuffer1 = new byte[1024 * 1024];
         byte[] DataBuffer2 = new byte[1024 * 1024];
@@ -56,8 +59,6 @@ namespace AvaSitcpTMCM
         int DataBuffer3_canchecklength = 0;
         int FooterWarnigCount = 0;
 
-        private string WriteFileFolderDic;
-        private string CaliFileFolderDic;
         private string FileName;
         private StringBuilder exceptionReport = new StringBuilder();
         int SumBytes = 0;
@@ -65,13 +66,32 @@ namespace AvaSitcpTMCM
         public event Action<string>? SendMessageEvent;
         public event Action<Tuple<int, string>>? SendCurrentEvent;
         public event Action<Tuple<int, string, string, string>>? SendTemperatureEvent;
+        public event Action<Tuple<int, string>>? SendStatusEvent;
         public bool IsSendEnabled { get; set; } = false;
-        public string HTTPInfluxUrl = "http://172.27.132.8:8086/write?db=test_TMCM";
+        public string HTTPInfluxUrl = "http://172.27.132.8:8086";
         //public event Action<bool>? IsStartTCPReadFromUserToFileEnabled;
         //public event Action<bool>? IsStopTCPReadFromUserToFileEnabled;
         int CurrentSendWaitTimeMs = 1000;
         int TemperatureSendWaitTimeMs = 1000;
+        int StatusSendWaitTimeMs = 1000;
+        public static string ReplaceEnvironmentVariables(string input)
+        {
+            return Regex.Replace(input, @"\$\{([A-Za-z0-9_]+)\}", match =>
+            {
+                var varName = match.Groups[1].Value;
+                return Environment.GetEnvironmentVariable(varName) ?? match.Value;
+            });
+        }
+        public static int GetBitFromByteArray(byte[] value, int i)
+        {
+            if (value == null || value.Length < 5) throw new ArgumentException("value must be byte[5]");
+            if (i < 0 || i >= 40) throw new ArgumentOutOfRangeException(nameof(i), "i must be 0-39");
 
+            int byteIndex = i / 8;        
+            int bitIndex = i % 8; 
+
+            return (value[byteIndex] >> bitIndex) & 0x1;
+        }
         public SitcpFunctions()
         {
                        // Initialize the DataBuffer arrays
@@ -80,9 +100,28 @@ namespace AvaSitcpTMCM
             DataBuffer2 = new byte[1024 * 1024];
             DataBuffer3 = new byte[1024 * 1024];
             var config = new ConfigurationBuilder().SetBasePath(System.AppContext.BaseDirectory).AddJsonFile("appsettings.json", optional: true, reloadOnChange: true).Build();
-            HTTPInfluxUrl = config.GetSection("Settings:HTTPInfluxUrl").Value ?? "http://172.27.132.8:8086/write?db=test_TMCM";
+            HTTPInfluxUrl = config.GetSection("Settings:HTTPInfluxUrl").Value ?? "http://172.27.132.8:8086";
+            HTTPInfluxUrl = ReplaceEnvironmentVariables(HTTPInfluxUrl);
+            string db = config.GetSection("Settings:DataBaseName").Value ?? "test_TMCM";
+            if (db.Contains("$") == true)
+            {
+                db = db.Replace("$", "");
+                db = Environment.GetEnvironmentVariable(db) ?? "test_TMCM";
+            }
+            if (HTTPInfluxUrl.Contains("/write?db=") == false)
+            {
+                HTTPInfluxUrl += "/write?db=" + db;
+            }
+            else
+            {
+                if (HTTPInfluxUrl.EndsWith(db) == false)
+                {
+                    HTTPInfluxUrl += db;
+                }
+            }
             CurrentSendWaitTimeMs = int.Parse(config.GetSection("Settings:CurrentSendWaitTimeMs").Value ?? "1000");
             TemperatureSendWaitTimeMs = int.Parse(config.GetSection("Settings:TemperatureSendWaitTimeMs").Value ?? "1000");
+            StatusSendWaitTimeMs = int.Parse(config.GetSection("Settings:StatusSendWaitTimeMs").Value ?? "1000");
         }
         private byte[] HexStringToByteArray(string HexString)
         {
@@ -102,6 +141,7 @@ namespace AvaSitcpTMCM
                 {
                     UserClient.Close();
                 }
+                UserClient.ReceiveTimeout = 3000;//time out set in 3000 ms
                 UserClient.Connect(ip, port);
                 SendMessageEvent?.Invoke("IP: " + ip + " Port: " + port + " connected successfully\r\n");
                 return 0;
@@ -113,22 +153,6 @@ namespace AvaSitcpTMCM
             }
         }
 
-        public void ServerConnect(string ip, int port)
-        {
-            try
-            {
-                if (ServerClient.Connected)
-                {
-                    ServerClient.Close();
-                }
-                ServerClient.Connect(ip, port);
-                SendMessageEvent?.Invoke("IP: " + ip + " Port: " + port + " connected successfully\r\n");
-            }
-            catch (Exception ex)
-            {
-                SendMessageEvent?.Invoke("Failed to connect to " + ip + ":" + port + ". Error: " + ex.Message + "\r\n");
-            }
-        }
         public void TCPWriteToUser(string HexString)
         {
             if (UserClient.Connected)
@@ -144,6 +168,7 @@ namespace AvaSitcpTMCM
                     NetworkStream stream = UserClient.GetStream();
                     stream.Write(CmdBytes, 0, CmdBytes.Length);
                     SendMessageEvent?.Invoke(HexString + " sent successfully\r\n");
+                    SendMessageEvent?.Invoke("Sent Data: " + BitConverter.ToString(CmdBytes).Replace("-", " ") + "\r\n"); // 表示改善
                 }
                 catch (Exception ex)
                 {
@@ -754,7 +779,7 @@ namespace AvaSitcpTMCM
         }
         public double DecodeCurrent(int[] dec_word, int channel)
         {
-            if(channel < 0 || channel >= 39)
+            if(channel < 0 || channel > 39)
             {
                 throw new ArgumentOutOfRangeException(nameof(channel), "Channel must be between 0 and 39.");
             }
@@ -1032,6 +1057,133 @@ namespace AvaSitcpTMCM
             TemperatureAcqSendTokens.Cancel();
             SendMessageEvent?.Invoke("Temperature acquisition and send stopped.\r\n");
         }
+        public async Task StatusAcqSendFunction(CancellationToken token, TcpClient UserClient)
+        {
+            byte[] CmdBytes = new byte[2];
+            //Current_Refresh Command is 0x1300
+            CmdBytes[0] = 0x13;
+            CmdBytes[1] = 0x00;
+            NetworkStream stream = UserClient.GetStream();
+            UserClient.ReceiveBufferSize = 40 * 4 / 8;
+            UserClient.ReceiveTimeout = 1000;
+            DateTime NowTime = new DateTime();
+            TimeSpan DurationTime = new TimeSpan();
+            byte[] TcpReceiveData = new byte[UserClient.ReceiveBufferSize];
+            while (true)
+            {
+                stream.Write(CmdBytes, 0, CmdBytes.Length);
+                DateTime StartTime = DateTime.Now;
+                int TcpReceiveLength = 0;
+                if (token.IsCancellationRequested == true)
+                {
+                    Thread.Sleep(100);
+                    NowTime = DateTime.Now;
+                    if (stream.DataAvailable)
+                    {
+                        NowTime = DateTime.Now;
+                        TcpReceiveLength = stream.Read(TcpReceiveData, 0, TcpReceiveData.Length);
+                    }
+                    else
+                    {
+                        TcpReceiveLength = 0;
+                        break;
+                    }
+
+                    if (TcpReceiveLength == 0)
+                    {
+                        break;
+                    }
+                    //MessageTextbox.AppendText("Received Data Bytes: " + TcpReceiveLength + "\r\n");
+                    int[] status = new int[40];
+                    int[] layers = new int[40];
+                    byte[] statuss = new byte[5];
+                    statuss = TcpReceiveData[10..15];
+                    for (int i = 0; i < 40; i++)
+                    {
+                        try
+                        {
+                            status[i] = GetBitFromByteArray(statuss, i);
+                        }
+                        catch (ArgumentOutOfRangeException)
+                        {
+                            status[i] = -1;
+                        }
+                        layers[i] = i;
+                        string status_str = status[i] == 1 ? "Connected" : (status[i] == 0 ? "not Connected" : "ERROR");
+                        SendStatusEvent?.Invoke(new Tuple<int, string>(i, status_str));
+                    }
+                    await UploadAllChStatusToInfluxAsync(layers, status, NowTime);
+                }
+                else
+                {
+                    while (!stream.DataAvailable)
+                    {
+                        NowTime = DateTime.Now;
+                        DurationTime = NowTime - StartTime;
+                        if (DurationTime.TotalMilliseconds > 3000)
+                        {
+                            //MessageBox.Show("No Rata Received");
+                            SendMessageEvent?.Invoke("No Data Received\r\n");
+                            break;
+                        }
+                    }
+                    if (stream.DataAvailable)
+                    {
+                        NowTime = DateTime.Now;
+                        TcpReceiveLength = stream.Read(TcpReceiveData, 0, TcpReceiveData.Length);
+                        if (TcpReceiveLength != 20)
+                        {
+                            SendMessageEvent?.Invoke("Warning: Received Data Length is not 20 Bytes\r\n");
+                            continue;
+                        }
+                        int[] status = new int[40];
+                        int[] layers = new int[40];
+                        byte[] statuss = new byte[5];
+                        statuss = TcpReceiveData[10..15];
+                        for (int i = 0; i < 40; i++)
+                        {
+                            try
+                            {
+                                status[i] = GetBitFromByteArray(statuss, i);
+                            }
+                            catch (ArgumentOutOfRangeException)
+                            {
+                                status[i] = -1;
+                            }
+                            layers[i] = i;
+                            string status_str = status[i] == 1 ? "Connected" : (status[i] == 0 ? "not Connected" : "ERROR");
+                            SendStatusEvent?.Invoke(new Tuple<int, string>(i, status_str));
+                        }
+                        await UploadAllChStatusToInfluxAsync(layers, status, NowTime);
+                    }
+                }
+                await Task.Delay(StatusSendWaitTimeMs, token);
+            }
+        }
+        public void StartStatusAcqSend()
+        {
+            StatusAcqSendTokens.Dispose();
+            StatusAcqSendTokens = new CancellationTokenSource();
+            SendMessageEvent?.Invoke("Status acquisition and send started.\r\n");
+            try
+            {
+                Task StatusAcqSendTask = Task.Factory.StartNew(() => this.StatusAcqSendFunction(StatusAcqSendTokens.Token, UserClient), StatusAcqSendTokens.Token);
+            }
+            catch (AggregateException excption)
+            {
+                foreach (var v in excption.InnerExceptions)
+                {
+                    SendMessageEvent?.Invoke(excption.Message + " " + v.Message);
+                    //MessageTextbox.AppendText(excption.Message + " " + v.Message);
+                }
+            }
+        }
+        public void StopStatusAcqSend()
+        {
+            StatusAcqSendTokens.Cancel();
+            SendMessageEvent?.Invoke("Status acquisition and send stopped.\r\n");
+        }
+
         private void Received_Data_Size(object a)
         {
             if (SumBytes < 1024)
@@ -1062,7 +1214,7 @@ namespace AvaSitcpTMCM
         {
             // setting up the InfluxDB
             var influxUrl = HTTPInfluxUrl;
-            string measurement = "current";
+            string measurement = "AHCALstatus";
             var lineBuilder = new StringBuilder();
             string time = timestamp.HasValue
                 ? $" {((DateTimeOffset)timestamp.Value).ToUnixTimeMilliseconds()}000000"
@@ -1070,7 +1222,7 @@ namespace AvaSitcpTMCM
             for (int i = 0; i < channels.Length; i++)
             {
                 string tag = $"layer={channels[i]}";
-                string field = $"value={values[i].ToString(CultureInfo.InvariantCulture)}";
+                string field = $"current={values[i].ToString(CultureInfo.InvariantCulture)}";
                 // Line Protocol
                 lineBuilder.Append(measurement).Append(',').Append(tag).Append(' ').Append(field).Append(time).Append('\n');
             }
@@ -1098,12 +1250,52 @@ namespace AvaSitcpTMCM
                 SendMessageEvent?.Invoke($"InfluxDB upload error: {ex.Message}");
             }
         }
+        public async Task UploadAllChStatusToInfluxAsync(int[] channels, int[] values, DateTime? timestamp = null)
+        {
+            // setting up the InfluxDB
+            var influxUrl = HTTPInfluxUrl;
+            string measurement = "AHCALstatus";
+            var lineBuilder = new StringBuilder();
+            string time = timestamp.HasValue
+                ? $" {((DateTimeOffset)timestamp.Value).ToUnixTimeMilliseconds()}000000"
+                : "";
+            for (int i = 0; i < channels.Length; i++)
+            {
+                string tag = $"layer={channels[i]}";
+                string field = $"status={values[i].ToString(CultureInfo.InvariantCulture)}";
+                // Line Protocol
+                lineBuilder.Append(measurement).Append(',').Append(tag).Append(' ').Append(field).Append(time).Append('\n');
+            }
+            // remove the last newline
+            if (lineBuilder.Length > 0)
+            {
+                lineBuilder.Length--;
+            }
+            var content = new StringContent(lineBuilder.ToString(), Encoding.UTF8);
+
+            try
+            {
+                var response = await httpClient.PostAsync(influxUrl, content);
+                if (!response.IsSuccessStatusCode)
+                {
+                    SendMessageEvent?.Invoke($"InfluxDB upload failed: {response.StatusCode} {await response.Content.ReadAsStringAsync()}");
+                }
+                else
+                {
+                    //SendMessageEvent?.Invoke($"InfluxDB upload success: {line}");
+                }
+            }
+            catch (Exception ex)
+            {
+                SendMessageEvent?.Invoke($"InfluxDB upload error: {ex.Message}");
+            }
+        }
 
         public async Task UploadAllChTemperaturetToInfluxAsync(int[] layers, int[] channels, double[] values, DateTime? timestamp = null)
         {
             // setting up the InfluxDB
             var influxUrl = HTTPInfluxUrl;
-            string measurement = "temperature";
+            string measurement = "AHCALTemperature";
             var lineBuilder = new StringBuilder();
             string time = timestamp.HasValue
                 ? $" {((DateTimeOffset)timestamp.Value).ToUnixTimeMilliseconds()}000000"
@@ -1143,8 +1335,11 @@ namespace AvaSitcpTMCM
         {
             try
             {
-                var uri = new Uri(HTTPInfluxUrl);
-                var pingUrl = $"{uri.Scheme}://{uri.Host}:{uri.Port}/ping";
+                var pingUrl = HTTPInfluxUrl;
+                if (pingUrl.Contains("write"))
+                {
+                    pingUrl= Regex.Replace(pingUrl, "/write\\?db=[^&]+", "/ping");
+                }
                 SendMessageEvent?.Invoke($"Pinging InfluxDB at {pingUrl}...\r\n");
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
                 var response = await httpClient.GetAsync(pingUrl, cts.Token);
@@ -1156,13 +1351,23 @@ namespace AvaSitcpTMCM
                 }
                 else
                 {
-                    SendMessageEvent?.Invoke($"InfluxDB ping failed: {response.StatusCode}\r\n");
+                    SendMessageEvent?.Invoke($"InfluxDB ping failed: {response.StatusCode}\r\n" +
+                        $"{response.ReasonPhrase}\r\n");
                     return false;
                 }
             }
             catch (Exception ex)
             {
                 SendMessageEvent?.Invoke($"InfluxDB ping error: {ex.Message}\r\n");
+                var inner = ex.InnerException;
+                if (inner != null)
+                {
+                    SendMessageEvent?.Invoke($"Error: {ex.Message}\nInner: {inner.Message}\nStackTrace: {inner.StackTrace}");
+                }
+                else
+                {
+                    SendMessageEvent?.Invoke($"Error: {ex.Message}\nStackTrace: {ex.StackTrace}");
+                }
                 return false;
             }
         }
@@ -1185,28 +1390,16 @@ namespace AvaSitcpTMCM
         }
         public void InfluxTestStart()
         {
-            bool isConnected = true;
-            Task.Run(() => CheckInfluxConnectionAsync()).ContinueWith(task =>
-            {
-                if (task.Result)
-                {
-                    SendMessageEvent?.Invoke("InfluxDB connection check passed.\r\n");
-                }
-                else
-                {
-                    SendMessageEvent?.Invoke("InfluxDB connection check failed.\r\n");
-                    isConnected = false;
-                }
-            });
-            if (!isConnected)
+            var ok = CheckInfluxConnectionAsync().GetAwaiter().GetResult();
+            if (!ok)
             {
                 SendMessageEvent?.Invoke("InfluxDB connection is not established. Please check the configuration.\r\n");
                 return;
             }
+
             InfluxTestTokens.Dispose();
             InfluxTestTokens = new CancellationTokenSource();
             SendMessageEvent?.Invoke("InfluxDB test started.\r\n");
-            // execute with async
             Task.Run(() => InfluxTestAsync(InfluxTestTokens.Token));
         }
 

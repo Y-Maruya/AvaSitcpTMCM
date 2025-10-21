@@ -65,6 +65,9 @@ namespace AvaSitcpTMCM.ViewModels
         private string[] _temperature_min_data = new string[40];
 
         [ObservableProperty]
+        private string[] _status_data = new string[40];
+
+        [ObservableProperty]
         [NotifyCanExecuteChangedFor(nameof(StartCurrentAcqSendCommand))]
         private bool _isStartCurrentAcqSendEnabled = true;
 
@@ -79,6 +82,14 @@ namespace AvaSitcpTMCM.ViewModels
         [ObservableProperty]
         [NotifyCanExecuteChangedFor(nameof(StopTemperatureAcqSendCommand))]
         private bool _isStopTemperatureAcqSendEnabled = false;
+
+        [ObservableProperty]
+        [NotifyCanExecuteChangedFor(nameof(StartStatusAcqSendCommand))]
+        private bool _isStartStatusAcqSendEnabled = true;
+
+        [ObservableProperty]
+        [NotifyCanExecuteChangedFor(nameof(StopStatusAcqSendCommand))]
+        private bool _isStopStatusAcqSendEnabled = false;
         //[ObservableProperty]
         //private bool _isSendEnabled;
 
@@ -89,8 +100,8 @@ namespace AvaSitcpTMCM.ViewModels
             // Default configuration loading
             var config = new ConfigurationBuilder().SetBasePath(System.AppContext.BaseDirectory).AddJsonFile("appsettings.json", optional: true, reloadOnChange: true).Build();
 
-            IpAddress = config.GetSection("Settings:IpAddress").Value ?? "192.168.10.16";
-            Port = config.GetSection("Settings:Port").Value ?? "26";
+            IpAddress = config.GetSection("Settings:IPAddress").Value ?? "193.169.11.17";
+            Port = config.GetSection("Settings:Port").Value ?? "25";
             FolderPathAtTcpReadToFile = config.GetSection("Settings:FolderPathAtTcpReadToFile").Value ?? "";
             FolderPathAtTM = config.GetSection("Settings:FolderPathAtTM").Value ?? "";
 
@@ -130,6 +141,14 @@ namespace AvaSitcpTMCM.ViewModels
                 Temperature_max_data[temperatureData.Item1] = temperatureData.Item2;
                 Temperature_avg_data[temperatureData.Item1] = temperatureData.Item3;
                 Temperature_min_data[temperatureData.Item1] = temperatureData.Item4;
+            });
+        }
+        private void OnSendStatusEvent(Tuple<int, string> statusData)
+        {
+            if (statusData.Item1 < 0 || statusData.Item1 > 39) return;
+            Dispatcher.UIThread.Post(() =>
+            {
+                Status_data[statusData.Item1] = statusData.Item2;
             });
         }
         [RelayCommand]
@@ -309,6 +328,32 @@ namespace AvaSitcpTMCM.ViewModels
         {
             return IsStopTemperatureAcqSendEnabled;
         }
+
+        [RelayCommand(CanExecute = nameof(CanStartStatusAcqSend))]
+        private void StartStatusAcqSend()
+        {
+            _sitcpFunctions.StartStatusAcqSend();
+            IsStartStatusAcqSendEnabled = false;
+            IsStopStatusAcqSendEnabled = true;
+        }
+        private bool CanStartStatusAcqSend()
+        {
+            return IsStartStatusAcqSendEnabled;
+        }
+        [RelayCommand(CanExecute = nameof(CanStopStatusAcqSend))]
+        private void StopStatusAcqSend()
+        {
+            _sitcpFunctions.StopStatusAcqSend();
+            IsStartStatusAcqSendEnabled = true;
+            IsStopStatusAcqSendEnabled = false;
+        }
+        private bool CanStopStatusAcqSend()
+        {
+            return IsStopStatusAcqSendEnabled;
+        }
+
+
+
         [RelayCommand]
         private void ClearLog()
         {

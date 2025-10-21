@@ -26,7 +26,9 @@ namespace AvaSitcpTMCM.Views
                     Current = "0",
                     TempMax = "0",
                     TempAvg = "0",
-                    TempMin = "0"
+                    TempMin = "0",
+                    Status = "Not ACQed"
+
                 });
             }
         }
@@ -39,7 +41,8 @@ namespace AvaSitcpTMCM.Views
                 if (e.PropertyName == nameof(vm.Current_data) ||
                     e.PropertyName == nameof(vm.Temperature_max_data) ||
                     e.PropertyName == nameof(vm.Temperature_avg_data) ||
-                    e.PropertyName == nameof(vm.Temperature_min_data))
+                    e.PropertyName == nameof(vm.Temperature_min_data) ||
+                    e.PropertyName == nameof(vm.Status_data))
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
@@ -49,6 +52,7 @@ namespace AvaSitcpTMCM.Views
                             Layers[i].TempMax = vm.Temperature_max_data[i];
                             Layers[i].TempAvg = vm.Temperature_avg_data[i];
                             Layers[i].TempMin = vm.Temperature_min_data[i];
+                            Layers[i].Status = vm.Status_data[i];
                         }
                     });
                 }
@@ -63,6 +67,7 @@ namespace AvaSitcpTMCM.Views
                     Layers[i].TempMax = vm.Temperature_max_data[i];
                     Layers[i].TempAvg = vm.Temperature_avg_data[i];
                     Layers[i].TempMin = vm.Temperature_min_data[i];
+                    Layers[i].Status = vm.Status_data[i];
                 }
             });
         }
@@ -75,5 +80,6 @@ namespace AvaSitcpTMCM.Views
         public string TempMax { get; set; }
         public string TempAvg { get; set; }
         public string TempMin { get; set; }
+        public string Status { get; set; }
     }
 }

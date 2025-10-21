@@ -6,7 +6,7 @@
         mc:Ignorable="d"
         x:Class="AvaSitcpTMCM.Views.SecondWindow"
         x:DataType="local:SecondWindow"
-        Title="Monitoring Window" Width="800" Height="600">
+        Title="Monitoring Window" Width="1000" Height="600">
 
 	<ScrollViewer>
 		<DataGrid AutoGenerateColumns="False"
@@ -14,6 +14,7 @@
                   CanUserResizeColumns="True">
 			<DataGrid.Columns>
 				<DataGridTextColumn Header="Layer" Binding="{Binding Layer}" Width="*"/>
+				<DataGridTextColumn Header="Connection" Binding="{Binding Status}" Width="*"/>
 				<DataGridTextColumn Header="Current [mA]" Binding="{Binding Current}" Width="*"/>
 				<DataGridTextColumn Header="Temp Max [°C]" Binding="{Binding TempMax}" Width="*"/>
 				<DataGridTextColumn Header="Temp Avg [°C]" Binding="{Binding TempAvg}" Width="*"/>
