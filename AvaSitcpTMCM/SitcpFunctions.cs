@@ -78,10 +78,19 @@ namespace AvaSitcpTMCM
         int StatusSendWaitTimeMs = 1000;
         public static string ReplaceEnvironmentVariables(string input)
         {
-            return Regex.Replace(input, @"\$\{([A-Za-z0-9_]+)\}", match =>
+            return Regex.Replace(input, @"\$\([A-Za-z0-9_]+)\", match =>
             {
                 var varName = match.Groups[1].Value;
-                return Environment.GetEnvironmentVariable(varName) ?? match.Value;
+                var config = new ConfigurationBuilder().SetBasePath(System.AppContext.BaseDirectory).AddJsonFile("appsettings.json", optional: true, reloadOnChange: true).Build();
+                var envConfig = new ConfigurationBuilder().SetBasePath(System.AppContext.BaseDirectory).AddJsonFile(config.GetSection("Settings:SecretFile").Value ?? "/etc/faser-secrets.json", optional: true, reloadOnChange: true).Build();
+                if (envConfig.GetSection(varName).Value != null)
+                {
+                    return envConfig.GetSection(varName).Value ?? match.Value;
+                }
+                else
+                {
+                    return Environment.GetEnvironmentVariable(varName) ?? match.Value;
+                }
             });
         }
         public static int GetBitFromByteArray(byte[] value, int i)
@@ -107,20 +116,17 @@ namespace AvaSitcpTMCM
             string user = config.GetSection("Settings:DataBaseUser").Value ?? "admin";
             if (user.Contains("$") == true)
             {
-                user = user.Replace("$", "");
-                user = Environment.GetEnvironmentVariable(user) ?? "admin";
+                user = ReplaceEnvironmentVariables(user);
             }
             string password = config.GetSection("Settings:DataBasePassword").Value ?? "admin";
             if (password.Contains("$") == true)
             {
-                password = password.Replace("$", "");
-                password = Environment.GetEnvironmentVariable(password) ?? "admin";
+                password = ReplaceEnvironmentVariables(password);
             }
             string db = config.GetSection("Settings:DataBaseName").Value ?? "test_TMCM";
             if (db.Contains("$") == true)
             {
-                db = db.Replace("$", "");
-                db = Environment.GetEnvironmentVariable(db) ?? "test_TMCM";
+                db = ReplaceEnvironmentVariables(db);
             }
             if (HTTPInfluxUrl.Contains("/write?db=") == false)
             {
