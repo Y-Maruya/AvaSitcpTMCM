@@ -82,7 +82,7 @@ namespace AvaSitcpTMCM
 
         public static string ReplaceEnvironmentVariables(string input)
         {
-            return Regex.Replace(input, @"\$(\[A-Za-z0-9_]+)", match =>
+            return Regex.Replace(input, @"\$([A-Za-z0-9_]+)", match =>
             {
                 var varName = match.Groups[1].Value;
                 var config = new ConfigurationBuilder().SetBasePath(System.AppContext.BaseDirectory).AddJsonFile("appsettings.json", optional: true, reloadOnChange: true).Build();
