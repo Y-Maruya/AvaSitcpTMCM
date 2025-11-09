@@ -22,8 +22,12 @@ namespace AvaSitcpTMCM
     {
         private TcpClient ServerClient = new TcpClient();
         private TcpClient UserClient = new TcpClient();
+
+        private string _ip = "";
+        private int _port = 0;
+        private readonly SemaphoreSlim _reconnectLock = new SemaphoreSlim(1, 1);
+
         private CancellationTokenSource DataAcqTokens = new CancellationTokenSource();
-        //     private CancellationTokenSource TcpConnectTokens = new CancellationTokenSource();
         private CancellationTokenSource TemperatureMonitoringTokens = new CancellationTokenSource();
         private CancellationTokenSource TcpReceiveTokens = new CancellationTokenSource();
         private CancellationTokenSource CheckerTokens = new CancellationTokenSource();
@@ -71,14 +75,14 @@ namespace AvaSitcpTMCM
         public event Action<Tuple<int, string>>? SendStatusEvent;
         public bool IsSendEnabled { get; set; } = false;
         public string HTTPInfluxUrl = "http://172.27.132.8:8086";
-        //public event Action<bool>? IsStartTCPReadFromUserToFileEnabled;
-        //public event Action<bool>? IsStopTCPReadFromUserToFileEnabled;
         int CurrentSendWaitTimeMs = 1000;
         int TemperatureSendWaitTimeMs = 1000;
         int StatusSendWaitTimeMs = 1000;
+        int replyTimeoutMs = 2000;
+
         public static string ReplaceEnvironmentVariables(string input)
         {
-            return Regex.Replace(input, @"\$\([A-Za-z0-9_]+)\", match =>
+            return Regex.Replace(input, @"\$(\[A-Za-z0-9_]+)", match =>
             {
                 var varName = match.Groups[1].Value;
                 var config = new ConfigurationBuilder().SetBasePath(System.AppContext.BaseDirectory).AddJsonFile("appsettings.json", optional: true, reloadOnChange: true).Build();
@@ -153,6 +157,7 @@ namespace AvaSitcpTMCM
             CurrentSendWaitTimeMs = int.Parse(config.GetSection("Settings:CurrentSendWaitTimeMs").Value ?? "1000");
             TemperatureSendWaitTimeMs = int.Parse(config.GetSection("Settings:TemperatureSendWaitTimeMs").Value ?? "1000");
             StatusSendWaitTimeMs = int.Parse(config.GetSection("Settings:StatusSendWaitTimeMs").Value ?? "1000");
+            replyTimeoutMs = int.Parse(config.GetSection("Settings:ReplyTimeoutMs").Value ?? "2000");
             Console.WriteLine("InfluxDB URL: " + HTTPInfluxUrl);
         }
         public string GetInfluxUrl()
@@ -177,8 +182,11 @@ namespace AvaSitcpTMCM
                 {
                     UserClient.Close();
                 }
-                UserClient.ReceiveTimeout = 3000;//time out set in 3000 ms
+                UserClient = new TcpClient(); // New instance
+                UserClient.ReceiveTimeout = 3000;
                 UserClient.Connect(ip, port);
+                _ip = ip;
+                _port = port;
                 SendMessageEvent?.Invoke("IP: " + ip + " Port: " + port + " connected successfully\r\n");
                 return 0;
             }
@@ -209,6 +217,65 @@ namespace AvaSitcpTMCM
                 return -1;
             }
         }
+
+        // check TcpClient connection status
+        private bool IsClientAlive(TcpClient c)
+        {
+            try
+            {
+                if (c == null) return false;
+                if (!c.Client.Connected) return false;
+                if (c.Client.Poll(1, SelectMode.SelectRead) && c.Available == 0) return false;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // Wait and attempt to reconnect
+        private async Task<bool> WaitReconnectAsync(CancellationToken token)
+        {
+            if (string.IsNullOrEmpty(_ip) || _port == 0)
+            {
+                SendMessageEvent?.Invoke("Reconnect skipped: no stored endpoint.\r\n");
+                return false;
+            }
+
+            await _reconnectLock.WaitAsync(token).ConfigureAwait(false);
+            try
+            {
+                if (IsClientAlive(UserClient)) return true; 
+
+                SendMessageEvent?.Invoke("TCP disconnected. Trying to reconnect...\r\n");
+                int attempt = 0;
+                while (!token.IsCancellationRequested)
+                {
+                    attempt++;
+                    try
+                    {
+                        UserConnect(_ip, _port);
+                        if (IsClientAlive(UserClient))
+                        {
+                            SendMessageEvent?.Invoke($"Reconnected (attempt {attempt}).\r\n");
+                            return true;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        SendMessageEvent?.Invoke($"Reconnect attempt {attempt} failed: {ex.Message}\r\n");
+                    }
+                    await Task.Delay(replyTimeoutMs, token).ConfigureAwait(false);
+                }
+                return false;
+            }
+            finally
+            {
+                _reconnectLock.Release();
+            }
+        }
+
         public void TCPWriteToUser(string HexString)
         {
             if (UserClient.Connected)
@@ -1690,7 +1757,7 @@ namespace AvaSitcpTMCM
 
         public async Task AllAcqSendFunction(CancellationToken token, TcpClient UserClient)
         {
-            var stream = UserClient.GetStream();
+            //var stream = UserClient.GetStream();
             byte[] cmdStatus = new byte[2] { 0x13, 0x00 }; // Status command
             byte[] cmdCurrent = new byte[2] { 0x12, 0x00 }; // Current command
             byte[] cmdTemp = new byte[2] { 0x11, 0x00 }; // Temperature command
@@ -1709,127 +1776,155 @@ namespace AvaSitcpTMCM
 
             while (!token.IsCancellationRequested)
             {
+                if (!IsClientAlive(UserClient))
+                {
+                    bool ok = await WaitReconnectAsync(token);
+                    if (!ok) break; 
+                }
+
+                NetworkStream? stream = null;
+                try
+                {
+                    stream = UserClient.GetStream();
+                }
+                catch (Exception ex)
+                {
+                    SendMessageEvent?.Invoke("GetStream failed: " + ex.Message + "\r\n");
+                    await Task.Delay(1000, token);
+                    continue;
+                }
                 bool didAny = false;
                 DateTime now = DateTime.UtcNow;
-                if (now >= nextStatusAt)
+                try
                 {
-
-                    stream.Write(cmdStatus, 0, cmdStatus.Length);
-                    int read = await ReadExactAsync(stream, bufStatus, expectedStatusBytes, 3000, token);
-
-                    if (read != expectedStatusBytes)
+                    if (now >= nextStatusAt)
                     {
-                        SendMessageEvent?.Invoke($"Status frame incomplete: {read}/{expectedStatusBytes} bytes\r\n");
-                    }
-                    else
-                    {
-                        DateTime nowStatus = DateTime.Now;
-                        int[] status = new int[40];
-                        int[] layers = new int[40];
-                        byte[] statuss = new byte[5];
-                        statuss = bufStatus[10..15];
-                        for (int i = 0; i < 40; i++)
+                        stream.Write(cmdStatus, 0, cmdStatus.Length);
+                        int read = await ReadExactAsync(stream, bufStatus, expectedStatusBytes, 3000, token);
+                        if (read == expectedStatusBytes)
                         {
-                            try
+                            int[] status = new int[40];
+                            int[] layers = new int[40];
+                            byte[] statuss = bufStatus[10..15];
+                            for (int i = 0; i < 40; i++)
                             {
-                                status[i] = GetBitFromByteArray(statuss, i);
+                                try { status[i] = GetBitFromByteArray(statuss, i); }
+                                catch { status[i] = -1; }
+                                layers[i] = i;
+                                string status_str = status[i] == 1 ? "Connected" : (status[i] == 0 ? "not Connected" : "ERROR");
+                                SendStatusEvent?.Invoke(new Tuple<int, string>(i, status_str));
                             }
-                            catch (ArgumentOutOfRangeException)
-                            {
-                                status[i] = -1;
-                            }
-                            layers[i] = i;
-                            string status_str = status[i] == 1 ? "Connected" : (status[i] == 0 ? "not Connected" : "ERROR");
-                            SendStatusEvent?.Invoke(new Tuple<int, string>(i, status_str));
+                            await UploadAllChStatusToInfluxAsync(layers, status, DateTime.Now);
                         }
-                        await UploadAllChStatusToInfluxAsync(layers, status, now);
+                        else
+                        {
+                            SendMessageEvent?.Invoke($"Status frame incomplete: {read}/{expectedStatusBytes} bytes\r\n");
+                        }
+                        nextStatusAt = now.AddMilliseconds(StatusSendWaitTimeMs);
+                        didAny = true;
                     }
-                    nextStatusAt = now.AddMilliseconds(StatusSendWaitTimeMs);
-                    didAny = true;
+                    if (now >= nextCurrentAt)
+                    {
+                        stream.Write(cmdCurrent, 0, cmdCurrent.Length);
+                        int read = await ReadExactAsync(stream, bufCurrent, expectedCurrentBytes, 3000, token);
+                        if (read == expectedCurrentBytes)
+                        {
+                            int[] dec_word = new int[48];
+                            for (int i = 0; i < 48; i++)
+                                dec_word[i] = (bufCurrent[4 * i] << 24) + (bufCurrent[4 * i + 1] << 16) + (bufCurrent[4 * i + 2] << 8) + bufCurrent[4 * i + 3];
+
+                            int[] channels = new int[40];
+                            double[] values = new double[40];
+                            for (int i = 0; i < 40; i++)
+                            {
+                                channels[i] = i;
+                                double current_value = DecodeCurrent(dec_word, i);
+                                values[i] = current_value;
+                                SendCurrentEvent?.Invoke(new Tuple<int, string>(i, current_value.ToString(CultureInfo.InvariantCulture)));
+                            }
+                            await UploadAllChCurrentToInfluxAsync(channels, values, DateTime.Now);
+                        }
+                        else
+                        {
+                            SendMessageEvent?.Invoke($"Current frame incomplete: {read}/{expectedCurrentBytes} bytes\r\n");
+                        }
+                        nextCurrentAt = now.AddMilliseconds(CurrentSendWaitTimeMs);
+                        didAny = true;
+                    }
+                    if (now >= nextTempAt)
+                    {
+                        stream.Write(cmdTemp, 0, cmdTemp.Length);
+                        int read = await ReadExactAsync(stream, bufTemp, expectedTempBytes, 3000, token);
+                        if (read == expectedTempBytes)
+                        {
+                            double[] temperatures = new double[40 * 48];
+                            int[] channels = new int[40 * 48];
+                            int[] layers = new int[40 * 48];
+                            double[] maxlayer = new double[40];
+                            double[] avglayer = new double[40];
+                            double[] minlayer = new double[40];
+                            for (int i = 0; i < 40; i++)
+                            {
+                                maxlayer[i] = -100.0;
+                                avglayer[i] = 0.0;
+                                minlayer[i] = 200.0;
+                            }
+                            for (int i = 0; i < 40 * 48; i++)
+                            {
+                                temperatures[i] = (bufTemp[4 * i] * 256 + bufTemp[4 * i + 1]) / 128.0;
+                                channels[i] = bufTemp[4 * i + 2];
+                                layers[i] = bufTemp[4 * i + 3];
+                                if (temperatures[i] > maxlayer[layers[i]]) maxlayer[layers[i]] = temperatures[i];
+                                if (temperatures[i] < minlayer[layers[i]]) minlayer[layers[i]] = temperatures[i];
+                                avglayer[layers[i]] += temperatures[i];
+                            }
+                            for (int i = 0; i < 40; i++)
+                            {
+                                avglayer[i] /= 48.0;
+                                SendTemperatureEvent?.Invoke(new Tuple<int, string, string, string>(i, maxlayer[i].ToString("F2", CultureInfo.InvariantCulture), avglayer[i].ToString("F2", CultureInfo.InvariantCulture), minlayer[i].ToString("F2", CultureInfo.InvariantCulture)));
+                            }
+                            await UploadAllChTemperaturetToInfluxAsync(layers, channels, temperatures, DateTime.Now);
+                        }
+                        else
+                        {
+                            SendMessageEvent?.Invoke($"Temperature frame incomplete: {read}/{expectedTempBytes} bytes\r\n");
+                        }
+                        nextTempAt = now.AddMilliseconds(TemperatureSendWaitTimeMs);
+                        didAny = true;
+                    }
                 }
-                if (now >= nextCurrentAt)
+                catch (IOException ioex)
                 {
-                    stream.Write(cmdCurrent, 0, cmdCurrent.Length);
-                    int read = await ReadExactAsync(stream, bufCurrent, expectedCurrentBytes, 3000, token);
-                    if (read != expectedCurrentBytes)
-                    {
-                        SendMessageEvent?.Invoke($"Current frame incomplete: {read}/{expectedCurrentBytes} bytes\r\n");
-                    }
-                    else
-                    {
-                        DateTime ts = DateTime.Now;
-                        int[] dec_word = new int[48];
-                        for (int i = 0; i < 48; i++)
-                            dec_word[i] = (bufCurrent[4 * i] << 24) + (bufCurrent[4 * i + 1] << 16) + (bufCurrent[4 * i + 2] << 8) + bufCurrent[4 * i + 3];
-
-                        int[] channels = new int[40];
-                        double[] values = new double[40];
-                        for (int i = 0; i < 40; i++)
-                        {
-                            channels[i] = i;
-                            double current_value = DecodeCurrent(dec_word, i);
-                            values[i] = current_value;
-                            SendCurrentEvent?.Invoke(new Tuple<int, string>(i, current_value.ToString(CultureInfo.InvariantCulture)));
-                        }
-                        await UploadAllChCurrentToInfluxAsync(channels, values, ts);
-                    }
-                    nextCurrentAt = now.AddMilliseconds(CurrentSendWaitTimeMs);
-                    didAny = true;
+                    SendMessageEvent?.Invoke("IO exception, will try reconnect: " + ioex.Message + "\r\n");
+                    await WaitReconnectAsync(token);
                 }
-                if (now >= nextTempAt)
+                catch (SocketException sex)
                 {
-                    stream.Write(cmdTemp, 0, cmdTemp.Length);
-                    int read = await ReadExactAsync(stream, bufTemp, expectedTempBytes, 3000, token);
-                    if (read != expectedTempBytes)
-                    {
-                        SendMessageEvent?.Invoke($"Temperature frame incomplete: {read}/{expectedTempBytes} bytes\r\n");
-                    }
-                    else
-                    {
-                        DateTime nowTemp = DateTime.Now;
-                        double[] temperatures = new double[40 * 48];
-                        int[] channels = new int[40 * 48];
-                        int[] layers = new int[40 * 48];
-                        double[] maxlayer = new double[40];
-                        double[] avglayer = new double[40];
-                        double[] minlayer = new double[40];
-                        for (int i = 0; i < 40; i++)
-                        {
-                            maxlayer[i] = -100.0;
-                            avglayer[i] = 0.0;
-                            minlayer[i] = 200.0;
-                        }
-                        for (int i = 0; i < 40 * 48; i++)
-                        {
-                            temperatures[i] = (bufTemp[4 * i] * 256 + bufTemp[4 * i + 1]) / 128.0;
-                            channels[i] = bufTemp[4 * i + 2];
-                            layers[i] = bufTemp[4 * i + 3];
-                            if (temperatures[i] > maxlayer[layers[i]])
-                            {
-                                maxlayer[layers[i]] = temperatures[i];
-                            }
-                            if (temperatures[i] < minlayer[layers[i]])
-                            {
-                                minlayer[layers[i]] = temperatures[i];
-                            }
-                            avglayer[layers[i]] += temperatures[i];
-                        }
-                        for (int i = 0; i < 40; i++)
-                        {
-                            avglayer[i] /= 48.0;
-                            SendTemperatureEvent?.Invoke(new Tuple<int, string, string, string>(i, maxlayer[i].ToString("F2", CultureInfo.InvariantCulture), avglayer[i].ToString("F2", CultureInfo.InvariantCulture), minlayer[i].ToString("F2", CultureInfo.InvariantCulture)));
-                        }
-                        await UploadAllChTemperaturetToInfluxAsync(layers, channels, temperatures, now);
-                    }
-                    nextTempAt = now.AddMilliseconds(TemperatureSendWaitTimeMs);
-                    didAny = true;
+                    SendMessageEvent?.Invoke("Socket exception, will try reconnect: " + sex.Message + "\r\n");
+                    await WaitReconnectAsync(token);
                 }
+                catch (ObjectDisposedException)
+                {
+                    if (token.IsCancellationRequested) break;
+                    SendMessageEvent?.Invoke("Stream disposed, reconnecting...\r\n");
+                    await WaitReconnectAsync(token);
+                }
+                catch (Exception ex)
+                {
+                    SendMessageEvent?.Invoke("Unexpected error: " + ex.Message + "\r\n");
+                    await Task.Delay(1000, token);
+                }
+
                 if (!didAny)
                 {
                     var next = new[] { nextStatusAt, nextCurrentAt, nextTempAt }.Min();
                     var delay = next - now;
                     if (delay < TimeSpan.FromMilliseconds(5)) delay = TimeSpan.FromMilliseconds(5);
-                    await Task.Delay(delay, token);
+                    try
+                    {
+                        await Task.Delay(delay, token);
+                    }
+                    catch { }
                 }
             }
         }
