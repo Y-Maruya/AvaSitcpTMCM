@@ -1394,10 +1394,9 @@ namespace AvaSitcpTMCM
             string time = timestamp.HasValue
                 ? $" {((DateTimeOffset)timestamp.Value).ToUnixTimeMilliseconds()}000000"
                 : "";
-            string tag = "";
             string field = $"value={value.ToString(CultureInfo.InvariantCulture)}";
             // Line Protocol
-            lineBuilder.Append(measurement).Append(',').Append(tag).Append(' ').Append(field).Append(time).Append('\n');
+            lineBuilder.Append(measurement).Append(' ').Append(field).Append(time).Append('\n');
             // remove the last newline
             if (lineBuilder.Length > 0)
             {
