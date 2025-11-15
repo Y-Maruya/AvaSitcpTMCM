@@ -363,25 +363,25 @@ namespace AvaSitcpTMCM
                 Thread.Sleep(1000); // Wait for a second to ensure connection is established
                 Console.WriteLine($"Connected to InfluxDB successfully. \n\r");
                 Console.WriteLine($"URL: {sitcp.GetInfluxUrl()}\n\r");
-                Console.WriteLine("Press S to start data acquisition...");
-                while (true)
-                {
-                    if (Console.KeyAvailable)
-                    {
-                        if (Console.ReadKey(true).Key == ConsoleKey.S)
-                        {
-                            Console.WriteLine("'S' key pressed. Starting Monitoring...");
-                            break;
-                        }
-                    }
-                    if (stopDaqCts.Token.IsCancellationRequested)
-                    {
-                        Console.WriteLine("Cancellation requested before starting data acquisition. Exiting...");
-                        sitcp.UserDisconnect();
-                        return;
-                    }
-                    Thread.Sleep(100); // Sleep briefly to reduce CPU usage
-                }
+                //Console.WriteLine("Press S to start data acquisition...");
+                //while (true)
+                //{
+                //    if (Console.KeyAvailable)
+                //    {
+                //        if (Console.ReadKey(true).Key == ConsoleKey.S)
+                //        {
+                //            Console.WriteLine("'S' key pressed. Starting Monitoring...");
+                //            break;
+                //        }
+                //    }
+                //    if (stopDaqCts.Token.IsCancellationRequested)
+                //    {
+                //        Console.WriteLine("Cancellation requested before starting data acquisition. Exiting...");
+                //        sitcp.UserDisconnect();
+                //        return;
+                //    }
+                //    Thread.Sleep(100); // Sleep briefly to reduce CPU usage
+                //}
                 Console.WriteLine("Starting data acquisition. Press Ctrl+C or press-S to stop.");
 
                 try

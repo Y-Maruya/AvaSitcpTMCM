@@ -174,6 +174,21 @@ namespace AvaSitcpTMCM
             }
             return hexBytes;
         }
+        public static async Task<bool> ConnectWithTimeout(TcpClient client, string host, int port, int timeoutMs)
+        {
+            var connectTask = client.ConnectAsync(host, port);
+            var timeoutTask = Task.Delay(timeoutMs);
+
+            if (await Task.WhenAny(connectTask, timeoutTask) == connectTask)
+            {
+                await connectTask;
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
         public int UserConnect(string ip, int port)
         {
             try
@@ -184,7 +199,12 @@ namespace AvaSitcpTMCM
                 }
                 UserClient = new TcpClient(); // New instance
                 UserClient.ReceiveTimeout = 3000;
-                UserClient.Connect(ip, port);
+                bool ok = ConnectWithTimeout(UserClient, ip, port, 1000).GetAwaiter().GetResult();
+                if (!ok)
+                {
+                    SendMessageEvent?.Invoke("Connection to " + ip + ":" + port + " timed out.\r\n");
+                    return -1;
+                }
                 _ip = ip;
                 _port = port;
                 SendMessageEvent?.Invoke("IP: " + ip + " Port: " + port + " connected successfully\r\n");
