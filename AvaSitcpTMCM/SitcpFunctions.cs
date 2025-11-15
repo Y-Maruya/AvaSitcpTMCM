@@ -1644,7 +1644,14 @@ namespace AvaSitcpTMCM
                                 double t = (bufTemp[4 * i] * 256 + bufTemp[4 * i + 1]) / 128.0;
                                 int ch = bufTemp[4 * i + 2];
                                 int layer = bufTemp[4 * i + 3];
-
+                                if (t <0 || ch <0 || layer <0 || (uint)ch >= 48 || (uint)layer >= 40)
+                                {
+                                    if (numWarnings < 100)
+                                    {
+                                        SendMessageEvent?.Invoke($"Warning: Temperature data with negative value t={t}, ch={ch}, layer={layer}\r\n");
+                                    }
+                                    numWarnings++;
+                                }
                                 temperatures[i] = t;
                                 channels[i] = ch;
                                 layers[i] = layer;
@@ -1656,14 +1663,14 @@ namespace AvaSitcpTMCM
                                     avglayer[layer] += t;
                                     cntlayer[layer]++;
                                 }
-                                if ((uint)ch >= 48 || (uint)layer >= 40)
-                                {
-                                    if (numWarnings < 100)
-                                    {
-                                        SendMessageEvent?.Invoke($"Warning: Temperature data with invalid channel {ch} at layer {layer}\r\n");
-                                    }
-                                    numWarnings++;
-                                }
+                                //if ((uint)ch >= 48 || (uint)layer >= 40)
+                                //{
+                                //    if (numWarnings < 100)
+                                //    {
+                                //        SendMessageEvent?.Invoke($"Warning: Temperature data with invalid channel {ch} at layer {layer}\r\n");
+                                //    }
+                                //    numWarnings++;
+                                //}
                             }
                             for (int i = 0; i < 40; i++)
                             {
