@@ -1641,26 +1641,15 @@ namespace AvaSitcpTMCM
                             }
                             for (int i = 0; i < 40 * 48; i++)
                             {
-                                double t = (bufTemp[4 * i] * 256 + bufTemp[4 * i + 1]) / 128.0;
-                                int ch = bufTemp[4 * i + 2];
-                                int layer = bufTemp[4 * i + 3];
-                                if (t <0 || ch <0 || layer <0 || (uint)ch >= 48 || (uint)layer >= 40)
-                                {
-                                    if (numWarnings < 100)
-                                    {
-                                        SendMessageEvent?.Invoke($"Warning: Temperature data with negative value t={t}, ch={ch}, layer={layer}\r\n");
-                                    }
-                                    numWarnings++;
-                                }
-                                temperatures[i] = t;
-                                channels[i] = ch;
-                                layers[i] = layer;
-
+                                temperatures[i] = (bufTemp[4 * i] * 256 + bufTemp[4 * i + 1]) / 128.0;
+                                channels[i] = bufTemp[4 * i + 2];
+                                layers[i] = bufTemp[4 * i + 3];
+                                int layer = layers[i];
                                 if ((uint)layer < 40)
                                 {
-                                    if (t > maxlayer[layer]) maxlayer[layer] = t;
-                                    if (t < minlayer[layer]) minlayer[layer] = t;
-                                    avglayer[layer] += t;
+                                    if (temperatures[i] > maxlayer[layer]) maxlayer[layer] = temperatures[i];
+                                    if (temperatures[i] < minlayer[layer]) minlayer[layer] = temperatures[i];
+                                    avglayer[layer] += temperatures[i];
                                     cntlayer[layer]++;
                                 }
                                 //if ((uint)ch >= 48 || (uint)layer >= 40)
