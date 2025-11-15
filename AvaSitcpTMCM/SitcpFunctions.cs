@@ -1532,6 +1532,7 @@ namespace AvaSitcpTMCM
             DateTime nextTempAt = DateTime.UtcNow;
             DateTime nextTCP = DateTime.UtcNow;
             int TCPStatus = 1;
+            int numWarnings = 0;
             while (!token.IsCancellationRequested)
             {
                 DateTime now = DateTime.UtcNow;
@@ -1657,7 +1658,11 @@ namespace AvaSitcpTMCM
                                 }
                                 if ((uint)ch >= 48 || (uint)layer >= 40)
                                 {
-                                    SendMessageEvent?.Invoke($"Warning: Temperature data with invalid channel {ch} at layer {layer}\r\n");
+                                    if (numWarnings < 100)
+                                    {
+                                        SendMessageEvent?.Invoke($"Warning: Temperature data with invalid channel {ch} at layer {layer}\r\n");
+                                    }
+                                    numWarnings++;
                                 }
                             }
                             for (int i = 0; i < 40; i++)
